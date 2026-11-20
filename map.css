@@ -1,0 +1,440 @@
+/* SVG network renderer. Theme state is owned by the app and mirrored onto #cityMap. */
+#mapFrame {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: #f5f5f5;
+}
+body[data-theme="dark"] #mapFrame { background: #1f2427; }
+
+#cityMap.traffic-map-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--map-ground, #f5f5f5);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y pinch-zoom;
+  cursor: grab;
+}
+
+#cityMap.traffic-map-svg:active { cursor: grabbing; }
+
+#cityMap.traffic-map-svg[data-theme="light"] {
+  --map-ground: #f5f5f5;
+  --map-block-fill: #f9f9f8;
+  --map-block-stroke: #edf0f1;
+  --map-park-fill: #f6f7f7;
+  --map-park-stroke: #edf0f1;
+  --map-water-fill: #edf0f2;
+  --map-water-stroke: #e2e7e9;
+  --map-tree-fill: #c5cdd0;
+  --map-tree-core: #a6b1b6;
+  --map-road-edge: #bbc7ce;
+  --map-road-surface: #ced9e0;
+  --map-road-center: #98aab3;
+  --map-work-asphalt: #687477;
+  --map-arrow-ink: #81949d;
+  --map-road-selected: #7798a8;
+  --map-label-fill: #fafbfb;
+  --map-label-stroke: #d2dbdf;
+  --map-label-ink: #48555b;
+  --map-ink: #303c42;
+  --map-accent: #557b8c;
+  --map-closed: #b87972;
+  --map-bike: #4b837c;
+  --map-bike-mark: #2f7869;
+  --map-weather-disc: #f8fbfa;
+  --map-weather-ink: #496a78;
+  --map-wet-road: #587887;
+  --map-count-fill: #e4eaed;
+  --map-count-ink: #45575f;
+}
+
+#cityMap.traffic-map-svg[data-theme="dark"] {
+  --map-ground: #1f2427;
+  --map-block-fill: #242a2d;
+  --map-block-stroke: #31393d;
+  --map-park-fill: #262c2f;
+  --map-park-stroke: #323a3e;
+  --map-water-fill: #252c30;
+  --map-water-stroke: #394246;
+  --map-tree-fill: #515c61;
+  --map-tree-core: #6a757a;
+  --map-road-edge: #4d585f;
+  --map-road-surface: #3b464d;
+  --map-road-center: #84939a;
+  --map-work-asphalt: #232a2e;
+  --map-arrow-ink: #a4b1b6;
+  --map-road-selected: #7895a3;
+  --map-label-fill: #272d30;
+  --map-label-stroke: #495358;
+  --map-label-ink: #e0e6e8;
+  --map-ink: #e0e6e8;
+  --map-accent: #a3c4d0;
+  --map-closed: #db9288;
+  --map-bike: #84c9a8;
+  --map-bike-mark: #a4dbc1;
+  --map-weather-disc: #293439;
+  --map-weather-ink: #c3dce3;
+  --map-wet-road: #587887;
+  --map-count-fill: #353e42;
+  --map-count-ink: #e0e6e8;
+}
+
+.map-ground { fill: var(--map-ground); }
+.map-block-shape,
+.map-park-shape,
+.map-water-shape {
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.map-block-shape { fill: var(--map-block-fill); stroke: var(--map-block-stroke); }
+.map-park-shape { fill: var(--map-park-fill); stroke: var(--map-park-stroke); }
+.map-water-shape { fill: var(--map-water-fill); stroke: var(--map-water-stroke); }
+.map-tree-symbol { filter: url(#mapTreeShadow); }
+.map-tree-crown { fill: var(--map-tree-fill); stroke: var(--map-park-stroke); stroke-width: 1; }
+.map-tree-core { fill: var(--map-tree-core); opacity: .84; }
+
+.map-clouds { pointer-events: none; }
+.map-cloud-image { opacity: .17; pointer-events: none; }
+#cityMap[data-theme="dark"] .map-cloud-image { opacity: .09; }
+
+.map-road-selection,
+.map-road-casing,
+.map-road-surface,
+.map-road-centerline,
+.map-road-bike-lane,
+.map-road-closed-line,
+.map-selected-route,
+.map-road-hitpath {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.map-road-selection {
+  stroke: var(--map-road-selected);
+  stroke-width: 44;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.map-road-selection.major { stroke-width: 56; }
+.map-road-selection.one-way { stroke-width: 34; }
+.map-road-selection.visible { opacity: .42; }
+.map-road-casing { stroke: var(--map-road-edge); stroke-width: 36; }
+.map-road-casing.major { stroke-width: 48; }
+.map-road-casing.one-way { stroke-width: 28; }
+.map-road-casing.flyover { stroke-width: 40; }
+.map-road-casing.flyover.one-way { stroke-width: 30; }
+.map-road-casing.weather-wet { stroke: color-mix(in srgb, var(--map-road-edge) 84%, var(--map-wet-road)); }
+.map-road-casing.weather-snow { stroke: color-mix(in srgb, var(--map-road-edge) 78%, #eaf1ef); }
+.map-road-surface { stroke: var(--map-road-surface); stroke-width: 30; }
+.map-road-surface.major { stroke-width: 42; }
+.map-road-surface.one-way { stroke-width: 22; }
+.map-road-surface.flyover { stroke: color-mix(in srgb, var(--map-road-surface) 90%, #f8f8f4); }
+.map-road-surface.weather-wet { stroke: color-mix(in srgb, var(--map-road-surface) 72%, var(--map-wet-road)); }
+.map-road-surface.weather-snow { stroke: #edf3f1; }
+.map-road-centerline { stroke: var(--map-road-center); stroke-width: 3.2; stroke-dasharray: 9 9; opacity: .98; }
+.map-road-centerline.one-way { display: none; }
+.map-road-centerline.flyover { stroke-width: 2; stroke-dasharray: 3 8; opacity: .7; }
+.map-road-casing.closed { stroke: color-mix(in srgb, var(--map-road-edge) 72%, var(--map-closed)); }
+.map-road-surface.closed { stroke: color-mix(in srgb, var(--map-road-surface) 80%, var(--map-closed)); }
+.map-road-centerline.closed { stroke: var(--map-closed); opacity: .55; }
+.map-road-bike-lane,
+.map-road-bike-lane-guide,
+.map-road-weather-overlay {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.map-road-bike-lane { stroke: var(--map-bike); stroke-width: 10; opacity: 0; }
+.map-road-bike-lane-guide { stroke: color-mix(in srgb, var(--map-bike) 72%, #fff); stroke-width: 1.4; stroke-dasharray: 2 7; opacity: 0; }
+.map-road-state.bike-only .map-road-bike-lane { opacity: .2; }
+.map-road-state.bike-only .map-road-bike-lane-guide { opacity: .82; }
+.map-road-bike-lane.one-way { stroke-width: 8; }
+.map-road-bike-lane.major { stroke-width: 12; }
+.map-road-weather-overlay { display: none; }
+.map-road-state.is-wet .map-road-weather-overlay { display: block; stroke: url(#mapWetRoadPattern); stroke-width: 30; opacity: .9; }
+.map-road-state.is-wet .map-road-weather-overlay.major { stroke-width: 42; }
+.map-road-state.is-wet .map-road-weather-overlay.one-way { stroke-width: 22; }
+.map-road-state.is-snow .map-road-weather-overlay { display: block; stroke: url(#mapSnowRoadPattern); stroke-width: 30; opacity: .94; }
+.map-road-state.is-snow .map-road-weather-overlay.major { stroke-width: 42; }
+.map-road-state.is-snow .map-road-weather-overlay.one-way { stroke-width: 22; }
+.map-bike-road-marking { display: none; filter: url(#mapSoftShadow); pointer-events: none; }
+.map-road-state.bike-only .map-bike-road-marking { display: inline; }
+.map-bike-marking-disc { fill: var(--map-weather-disc); fill-opacity: .94; stroke: var(--map-bike); stroke-width: .8; }
+.map-bike-marking-wheel { fill: none; stroke: var(--map-bike-mark); stroke-width: 1.2; }
+.map-bike-marking-frame { fill: none; stroke: var(--map-bike-mark); stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
+.map-weather-marker { display: none; pointer-events: none; filter: url(#mapSoftShadow); }
+.map-road-state.is-wet .map-weather-marker,
+.map-road-state.is-snow .map-weather-marker { display: inline; }
+.map-weather-disc { fill: var(--map-weather-disc); fill-opacity: .96; stroke: color-mix(in srgb, var(--map-weather-ink) 42%, #fff); stroke-width: .9; }
+.map-weather-icon { display: none; }
+.map-road-state.is-wet .weather-wet-icon,
+.map-road-state.is-snow .weather-snow-icon { display: inline; }
+.map-weather-cloud { fill: var(--map-weather-ink); stroke: var(--map-weather-ink); stroke-width: .6; }
+.map-weather-rain { fill: none; stroke: #5e9aad; stroke-width: 1.25; stroke-linecap: round; }
+.map-weather-snowflake { fill: none; stroke: var(--map-weather-ink); stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
+.map-road-state.is-closed .map-road-closed-line { stroke: var(--map-closed); stroke-width: 4; stroke-dasharray: 3 8; opacity: .86; }
+.map-roadwork-site { pointer-events: none; }
+.map-roadwork-paving,
+.map-roadwork-barrier { display: none; }
+.map-roadwork-paving.is-visible,
+.map-roadwork-site.is-closed .map-roadwork-barrier { display: inline; }
+.map-roadwork-paving { fill: none; stroke: var(--map-work-asphalt); stroke-linecap: butt; }
+.map-roadwork-barrier-board { fill: #f2bd65; stroke: #68452a; stroke-width: 1.05; }
+.map-roadwork-barrier-hatch { fill: none; stroke: #795031; stroke-width: 1.35; stroke-linecap: round; }
+.map-roadwork-marker { --map-work-plate: #5c4028; pointer-events: none; outline: none; }
+.map-roadwork-marker.is-enroute { --map-work-plate: #454f50; }
+.map-roadwork-link { stroke: var(--map-ink); stroke-width: 1.1; stroke-dasharray: 2 2; opacity: .45; }
+.map-roadwork-plate { fill: var(--map-work-plate); stroke: #e4b56d; stroke-width: 1.25; }
+.map-roadwork-marker:hover .map-roadwork-plate,
+.map-roadwork-marker:focus-visible .map-roadwork-plate { stroke: #ffe6ac; stroke-width: 2; }
+.map-roadwork-cone { fill: none; stroke: #efca85; stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
+.map-roadwork-label {
+  fill: #fff5df;
+  font: 720 10.5px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+  dominant-baseline: central;
+}
+.map-roadwork-hit { fill: transparent; pointer-events: all; cursor: pointer; }
+.map-road-state.show-condition-marker.is-closed .map-road-condition-marker { display: block; }
+.map-road-condition-marker,
+.map-breakdown-marker { display: none; pointer-events: none; }
+.map-road-condition-marker { filter: url(#mapSoftShadow); }
+.map-condition-disc { fill: var(--map-closed); stroke: var(--map-label-fill); stroke-width: 2; }
+.map-condition-cross { fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; }
+.map-breakdown-marker.is-visible { display: inline; }
+.map-breakdown-carbody { fill: #f2b74c; stroke: #604017; stroke-width: 1.7; }
+.map-breakdown-window { fill: #624325; stroke: #ffe1a3; stroke-width: .65; }
+.map-breakdown-lights { fill: none; stroke: #fff2c5; stroke-width: 1.6; stroke-linecap: round; }
+.map-breakdown-diamond { fill: #f2b74c; stroke: #604017; stroke-width: 1.25; }
+.map-breakdown-exclamation { fill: none; stroke: #36250f; stroke-width: 1.45; stroke-linecap: round; }
+.key-breakdown { width: 8px; height: 8px; margin-inline: 1px; background: #f2b74c; border: 1px solid #604017; border-radius: 1px; transform: rotate(45deg); }
+
+.map-road-hit-layer { pointer-events: auto; }
+.map-street-hit { cursor: pointer; outline: none; }
+.map-road-hitpath { stroke: transparent; stroke-width: 46; pointer-events: stroke; }
+.map-road-hitpath.major { stroke-width: 58; }
+.map-road-hitpath.minor { stroke-width: 46; }
+.map-flyover-hitpath { stroke-width: 30; }
+.map-street-hit:focus-visible .map-road-hitpath { stroke: var(--map-accent); opacity: .74; }
+
+.map-route-layer { pointer-events: none; }
+.map-road-centerline-layer { pointer-events: none; }
+.map-selected-route { stroke: #4d9469; stroke-width: 5; stroke-dasharray: 1 1; opacity: 0; }
+.map-selected-route.visible { opacity: .72; }
+.map-selected-route.route-current { stroke: #248052; stroke-width: 7; opacity: .94; }
+.map-selected-route.route-complete { stroke: #7b78b7; stroke-dasharray: 7 6; opacity: .66; }
+#cityMap[data-theme="dark"] .map-selected-route { stroke: #83c49b; }
+#cityMap[data-theme="dark"] .map-selected-route.route-current { stroke: #a1dfb6; }
+#cityMap[data-theme="dark"] .map-selected-route.route-complete { stroke: #aaa5df; }
+
+.map-direction-arrow-layer { pointer-events: none; }
+.map-direction-arrow { opacity: .76; }
+.map-direction-arrow.one-way { opacity: .98; }
+.map-direction-arrow.one-way .map-direction-arrow-mark { stroke-width: 3; }
+.map-direction-arrow-mark {
+  fill: none;
+  stroke: var(--map-arrow-ink);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.map-label-layer,
+.map-road-count-layer { pointer-events: none; }
+.map-label-layer.is-hidden { display: none; }
+.map-street-label { filter: url(#mapSoftShadow); }
+.map-label-plate { fill: var(--map-label-fill); stroke: var(--map-label-stroke); stroke-width: 1.4; }
+.map-label-text {
+  fill: var(--map-label-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 20px;
+  font-weight: 690;
+  letter-spacing: .025em;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+.map-street-label.selected .map-label-plate { stroke: var(--map-accent); stroke-width: 2.2; }
+.map-street-label.selected .map-label-text { fill: var(--map-ink); }
+.map-road-count.is-hidden { display: none; }
+.map-road-count-plate { fill: var(--map-count-fill); stroke: var(--map-label-fill); stroke-width: 1; }
+.map-road-count-text {
+  fill: var(--map-count-ink);
+  font: 650 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.map-signal-layer.is-hidden { display: none; }
+.map-signal { pointer-events: none; outline: none; }
+.map-signal-pole { stroke: var(--map-ink); stroke-width: 2; opacity: .6; stroke-linecap: round; pointer-events: none; }
+.map-signal-stopbar-under { stroke: #45535a; stroke-width: 5; stroke-linecap: round; opacity: .78; pointer-events: none; }
+.map-signal-stopbar { stroke: #fff; stroke-width: 3.5; stroke-linecap: round; pointer-events: none; }
+.map-signal-head { filter: url(#mapSoftShadow); pointer-events: none; }
+.map-signal-housing { fill: #253238; stroke: #f7f9f8; stroke-width: 1.35; }
+.map-signal-lamp { fill: #64747b; stroke: #11191d; stroke-width: .75; }
+.map-signal-hit { fill: transparent; pointer-events: all; cursor: pointer; }
+.map-signal.is-red .lamp-red { fill: #ef776c; }
+.map-signal.is-yellow .lamp-yellow { fill: #f1bd57; }
+.map-signal.is-green .lamp-green { fill: #66ca8a; }
+.map-signal:focus-visible .map-signal-housing { stroke: var(--map-accent); stroke-width: 2.8; }
+
+.map-crossing {
+  --crossing-fill: #30414a;
+  --crossing-ink: #f3f5f5;
+  --crossing-edge: #a5b6bf;
+  pointer-events: none;
+  outline: none;
+}
+.map-crossing-marking { pointer-events: none; }
+.map-crossing.has-people {
+  --crossing-fill: #553c21;
+  --crossing-ink: #ffe3ad;
+  --crossing-edge: #efbb6d;
+}
+.map-crossing.is-walk {
+  --crossing-fill: #1d5543;
+  --crossing-ink: #e9faee;
+  --crossing-edge: #9bd8b1;
+}
+.map-crossing-stripe { fill: #fbfdfd; stroke: #5c6d76; stroke-opacity: .57; stroke-width: .8; }
+.map-crossing-outline {
+  fill: var(--map-accent);
+  fill-opacity: .15;
+  stroke: var(--map-accent);
+  stroke-width: 1.5;
+  opacity: 0;
+}
+.map-crossing-marking.is-selected .map-crossing-outline,
+.map-crossing-marking.is-focused .map-crossing-outline { opacity: 1; }
+.map-crossing-link { stroke: var(--map-ink); stroke-width: 1.1; stroke-dasharray: 2 2; opacity: .42; }
+.map-crossing-plate { fill: var(--crossing-fill); stroke: var(--crossing-edge); stroke-width: 1.2; }
+.map-crossing.is-selected .map-crossing-plate,
+.map-crossing:focus-visible .map-crossing-plate { stroke: var(--map-accent); stroke-width: 2.8; }
+.map-crossing-label {
+  fill: var(--crossing-ink);
+  font: 720 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+  dominant-baseline: central;
+}
+.map-crossing-detail { font-size: 10.5px; font-weight: 620; }
+.map-crossing-person-head { fill: var(--crossing-ink); }
+.map-crossing-person,
+.map-crossing-wait-icon {
+  fill: none;
+  stroke: var(--crossing-ink);
+  stroke-width: 1.55;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.map-crossing-walk-icon,
+.map-crossing-figure,
+.map-crossing.is-walk .map-crossing-wait-icon { display: none; }
+.map-crossing.is-walk .map-crossing-walk-icon,
+.map-crossing-figure.is-visible { display: inline; }
+.map-crossing-figure-icon {
+  filter: drop-shadow(.45px 0 #fbfaf1) drop-shadow(-.45px 0 #fbfaf1) drop-shadow(0 -.4px #fbfaf1);
+}
+.map-crossing-foot-shadow { fill: #243330; opacity: .28; }
+.map-pedestrian-leg,
+.map-pedestrian-arm { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.map-pedestrian-leg { stroke: #263943; stroke-width: 1.65; }
+.map-pedestrian-leg.is-far { stroke: #536470; stroke-width: 1.42; }
+.map-pedestrian-arm { stroke: var(--pedestrian-jacket); stroke-width: 1.47; }
+.map-pedestrian-arm.is-far { stroke: color-mix(in srgb, var(--pedestrian-jacket) 77%, #2a3439); }
+.map-pedestrian-torso {
+  fill: var(--pedestrian-jacket);
+  stroke: color-mix(in srgb, var(--pedestrian-jacket) 70%, #273138);
+  stroke-width: .5;
+}
+.map-pedestrian-skin { fill: #d8aa81; }
+.map-pedestrian-hair { fill: #493c38; }
+.map-crossing-hit { fill: transparent; pointer-events: all; cursor: pointer; }
+
+.map-vehicle-marker { cursor: pointer; outline: none; }
+.map-vehicle-hitarea { fill: transparent; pointer-events: all; }
+.map-car-shadow { fill: #17211b; opacity: .2; }
+.map-car-body { fill: var(--map-car-tone, #42947c); stroke: var(--map-car-border, #30463d); stroke-width: var(--map-car-border-width, 1.15); }
+.map-car-tire { fill: #303834; }
+.map-car-window { fill: #e5f0ea; stroke: #52685d; stroke-width: .65; }
+.map-car-light { fill: #fff4c7; }
+.map-car-brake { fill: var(--map-brake-color, #926352); }
+.map-motorbike-tire { fill: #28343a; stroke: #172327; stroke-width: .6; }
+.map-motorbike-hub { fill: #acb4b0; }
+.map-motorbike-body { fill: #53877b; stroke: var(--map-car-border, #324c48); stroke-width: .75; stroke-linejoin: round; }
+.map-motorbike-chrome,
+.map-motorbike-lights,
+.map-motorbike-trousers,
+.map-motorbike-arm { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.map-motorbike-chrome { stroke: #b6bfba; stroke-width: .9; }
+.map-motorbike-lights { stroke: #f8df9a; stroke-width: .95; }
+.map-motorbike-trousers { stroke: #354554; stroke-width: 1.35; }
+.map-motorbike-rider { fill: #4a6476; stroke: #2f3f49; stroke-width: .65; }
+.map-motorbike-arm { stroke: #4a6476; stroke-width: 1.1; }
+.map-motorbike-helmet { fill: #ebd399; stroke: #635039; stroke-width: .58; }
+.map-motorbike-visor { fill: #435654; }
+.map-crane-chassis { fill: #ce9951; stroke: var(--map-car-border, #503b2c); stroke-width: var(--map-car-border-width, 1.05); }
+.map-crane-deck { fill: #586368; stroke: #584632; stroke-width: .55; }
+.map-crane-cab { fill: #e9b561; stroke: #715031; stroke-width: .63; }
+.map-crane-windshield { fill: #4e6873; stroke: #354b56; stroke-width: .42; }
+.map-crane-counterweight { fill: #e3ab55; stroke: #745232; stroke-width: .65; }
+.map-crane-pivot { fill: #757783; stroke: #4d473f; stroke-width: .65; }
+.map-crane-boom { fill: #e9ac4c; stroke: #684728; stroke-width: .75; stroke-linejoin: round; }
+.map-crane-boom-detail { fill: none; stroke: #ffe7a5; stroke-width: .7; stroke-linecap: round; }
+.map-crane-hook { fill: none; stroke: #614935; stroke-width: .85; stroke-linecap: round; stroke-linejoin: round; }
+.map-crane-folded { display: var(--map-crane-folded-display, inline); }
+.map-crane-raised { display: var(--map-crane-raised-display, none); }
+.map-vehicle-marker.is-working {
+  --map-crane-folded-display: none;
+  --map-crane-raised-display: inline;
+}
+.map-vehicle-marker.is-queued { --map-brake-color: #d63e2c; }
+.map-vehicle-selection-ring { fill: var(--map-accent); fill-opacity: .12; stroke: var(--map-accent); stroke-width: 1.8; opacity: 0; pointer-events: none; }
+.map-vehicle-marker:hover .map-vehicle-selection-ring,
+.map-vehicle-marker:focus-visible .map-vehicle-selection-ring { opacity: .72; }
+.map-vehicle-marker.is-selected .map-vehicle-selection-ring { opacity: 1; stroke-width: 2.2; }
+.map-vehicle-marker.is-selected,
+.map-vehicle-marker:focus-visible { --map-car-border: #246b48; --map-car-border-width: 1.85; }
+.map-vehicle-marker.is-complete { opacity: .72; }
+
+.map-tooltip {
+  position: absolute;
+  z-index: 5;
+  max-width: min(240px, calc(100% - 16px));
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--map-label-fill, #fff) 35%, transparent);
+  border-radius: 7px;
+  background: #27322c;
+  color: #fff;
+  box-shadow: 0 4px 15px rgb(20 27 23 / 18%);
+  font-size: 13px;
+  font-weight: 620;
+  line-height: 1.35;
+  text-align: center;
+  white-space: normal;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+}
+.map-tooltip.below { transform: translate(-50%, 0); }
+.map-tooltip[hidden] { display: none; }
+#cityMap[data-theme="dark"] + .map-tooltip { background: #eef0ec; color: #242a27; }
+
+@media (max-width: 700px) {
+  #mapFrame { min-height: 390px; height: min(69vh, 540px); }
+  #cityMap.traffic-map-svg { min-width: 780px; }
+  .map-label-text { font-size: 21px; }
+  .map-road-count-text { font-size: 12px; }
+}
+
+@media (max-width: 430px) {
+  #mapFrame { min-height: 360px; height: min(67vh, 480px); }
+  #cityMap.traffic-map-svg { min-width: 720px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-road-selection { transition: none; }
+}
