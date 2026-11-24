@@ -2,17 +2,17 @@
   "use strict";
 
   const SVG_NS = "http://www.w3.org/2000/svg";
-  const XLINK_NS = "http://www.w3.org/1999/xlink";
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const mix = (start, end, fraction) => start + (end - start) * fraction;
   const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
   const titleCase = (value) => `${(String(value || "")[0] || "").toUpperCase()}${String(value || "").slice(1)}`;
   const roadHalfWidth = (street) => street.oneWay ? 11 : street.major ? 21 : 15;
-  const vehicleTypeLabel = (type) => ({ bike: "Motorbike", crane: "Mobile crane" }[type] || "Car");
+  const vehicleTypeLabel = (type) => ({ bike: "Motorbike", crane: "Mobile crane", bus: "City bus" }[type] || "Car");
   const pedestrianOffsets = [0, -.55, .55, -.25];
   const pedestrianJackets = ["#316b77", "#a85c35", "#766280", "#657247"];
   const pedestrianStrideLength = 7.2;
   const pedestrianStance = .6;
+  const maxVisibleStopPeople = 4;
 
   function create(options = {}) {
     const { svg, frame, tooltip, data } = options;
@@ -30,6 +30,9 @@
     const roadworkMarkers = new Map();
     const breakdownTimers = new Map();
     const vehicleMarkers = new Map();
+    const transitStops = new Map();
+    const transitPeople = new Map();
+    const schoolBadges = new Map();
     const pathLengths = new WeakMap();
     const pathSamples = new WeakMap();
     const junctionCurves = new Map();
@@ -108,6 +111,7 @@
       layers.dividerMaskNodes = add(dividerMask, "g");
       makeCarGlyph(add(defs, "g", { id: "mapCarGlyph" }));
       makeCraneGlyph(add(defs, "g", { id: "mapCraneGlyph" }));
+      makeBusGlyph(add(defs, "g", { id: "mapBusGlyph" }));
       makeMotorbikeGlyph(add(defs, "g", { id: "mapBikeGlyph" }));
       const walkingGlyph = add(defs, "g", { id: "mapWalkingGlyph" });
       add(walkingGlyph, "circle", { cx: 1.1, cy: -5, r: 1.5, class: "map-crossing-person-head" });
@@ -140,17 +144,17 @@
       layers.flyovers = add(layers.camera, "g", { class: "map-flyover-layer" });
       layers.elevatedVehicles = add(layers.camera, "g", { class: "map-vehicle-layer" });
       layers.elevatedBreakdowns = add(layers.camera, "g", { class: "map-breakdown-layer", "aria-hidden": "true" });
-      layers.clouds = add(layers.camera, "g", { class: "map-clouds", "aria-hidden": "true" });
-      const cloud = add(layers.clouds, "image", { x: 0, y: 0, width: finite(data.width, 1440), height: finite(data.height, 900), preserveAspectRatio: "none", class: "map-cloud-image" });
-      cloud.setAttribute("href", "./assets/cloud-light.png");
-      cloud.setAttributeNS(XLINK_NS, "xlink:href", "./assets/cloud-light.png");
       layers.crossings = add(layers.camera, "g", { class: "map-crossing-layer" });
       layers.roadworks = add(layers.camera, "g", { class: "map-roadwork-markers" });
       layers.breakdownTimers = add(layers.camera, "g", { class: "map-breakdown-timers" });
       layers.labels = add(layers.camera, "g", { class: "map-label-layer", "aria-hidden": "true" });
+      layers.stalledVehicles = add(layers.camera, "g", { class: "map-vehicle-layer map-stalled-vehicle-layer" });
+      layers.transitPeople = add(layers.camera, "g", { class: "map-transit-people", "aria-hidden": "true" });
+      layers.schoolActivity = add(layers.camera, "g", { class: "map-school-activity", "aria-hidden": "true" });
 
       renderTerrain();
       createRoads();
+      createBusStops();
       createCrossings();
       svg.addEventListener("click", handleMapClick);
       svg.addEventListener("pointerdown", handlePointerDown);
@@ -179,13 +183,195 @@
       for (const shape of data.blocks || []) {
         if (!shape.path) continue;
         const type = shape.type === "park" || shape.type === "water" ? shape.type : "block";
+        if (type === "block" && data.buildings?.length) continue;
         add(layers.terrain, "path", { d: shape.path, class: `map-${type}-shape` });
       }
+      for (const ground of data.grounds || []) {
+        const { width: w, height: h } = ground;
+        const group = add(layers.terrain, "g", { transform: `translate(${ground.x} ${ground.y})`, class: `map-place-ground is-${ground.kind}` });
+        add(group, "rect", { width: w, height: h, rx: 7, class: "map-place-lawn" });
+        if (ground.kind === "school") {
+          add(group, "path", { d: `M${w - 27} 0V-11H${w + 14}V-28`, class: "map-place-footpath" });
+          add(group, "rect", { x: 14, y: h - 44, width: 47, height: 33, rx: 2, class: "map-school-court" });
+          add(group, "path", { d: `M15 ${h - 27.5}H60M37.5 ${h - 43}V${h - 12}`, class: "map-school-court-lines" });
+        } else {
+          add(group, "path", { d: `M5 ${h - 11}Q${w * .5} -8 ${w - 5} 12`, class: "map-place-footpath" });
+          for (const [x, y] of [[29, 13], [57, h - 16]]) {
+            add(group, "path", { d: `M${x} ${y}h13m-11 3h9`, class: "map-park-bench" });
+          }
+        }
+      }
+      for (const building of data.buildings || []) renderBuilding(building);
       for (const tree of data.trees || []) {
         const radius = finite(tree.r, 8);
         const group = add(layers.terrain, "g", { class: "map-tree-symbol", "aria-hidden": "true" });
         add(group, "circle", { cx: tree.x, cy: tree.y, r: radius, class: "map-tree-crown" });
         add(group, "circle", { cx: finite(tree.x) - radius * .2, cy: finite(tree.y) - radius * .2, r: radius * .35, class: "map-tree-core" });
+      }
+      for (const district of data.districts || []) {
+        const label = add(layers.terrain, "text", { x: district.x, y: district.y, "text-anchor": "middle", "font-size": district.size || 21,
+          class: "map-district-name", "data-district": district.id });
+        if (district.lines?.length) district.lines.forEach((line, index) => {
+          add(label, "tspan", { x: district.x, dy: index ? 18 : 0 }).textContent = line;
+        });
+        else label.textContent = district.name;
+      }
+    }
+
+    function renderBuilding(building) {
+      const { width: w, height: h } = building;
+      const group = add(layers.terrain, "g", { transform: `translate(${building.x} ${building.y})`,
+        class: `map-building is-${building.kind} tone-${building.tone || "sand"}`, "data-building": building.id });
+      if (building.name) add(group, "title").textContent = building.name;
+      add(group, "rect", { x: 2.5, y: 4, width: w, height: h, rx: 3, class: "map-building-shadow" });
+      add(group, "rect", { y: 3, width: w, height: h, rx: 2.5, class: "map-building-wall" });
+      add(group, "rect", { width: w, height: h, rx: 2.5, class: "map-building-roof" });
+      if (building.kind === "home") {
+        add(group, "path", { d: `M${w / 2} 5V${h - 5}M3 3L${w / 2} 8L${w - 3} 3M3 ${h - 3}L${w / 2} ${h - 8}L${w - 3} ${h - 3}`, class: "map-building-ridge" });
+        add(group, "rect", { x: w - 11, y: 6, width: 5, height: 7, rx: .7, class: "map-building-chimney" });
+        add(group, "rect", { x: w * .38, y: h + 1, width: w * .24, height: 4, rx: 1, class: "map-building-entrance" });
+      } else {
+        add(group, "rect", { x: 4, y: 4, width: w - 8, height: h - 8, rx: 1, class: "map-building-roof-inset" });
+        add(group, "rect", { x: w * .27, y: h * .28, width: w * .25, height: h * .27, rx: 1, class: "map-building-skylight" });
+        add(group, "rect", { x: w - 13, y: 7, width: 6, height: 7, rx: 1, class: "map-building-chimney" });
+      }
+      if (building.kind === "shop") {
+        for (let x = 4; x < w - 5; x += 7) add(group, "rect", { x, y: h - 1, width: 6, height: 5, rx: .6, class: "map-shop-awning" });
+      } else if (building.kind === "school") {
+        for (let x = 9; x < w - 7; x += 13) add(group, "rect", { x, y: h - 4, width: 7, height: 3, class: "map-building-skylight" });
+      }
+    }
+
+    function createBusStops() {
+      for (const stop of data.busStops || []) {
+        const road = roads.get(stop.streetId);
+        if (!road) continue;
+        const pose = pathPose(road.surface, stop.progress, Boolean(stop.reverse), roadHalfWidth(road.street) + 9);
+        if (!pose) continue;
+        const group = add(layers.terrain, "g", { transform: `translate(${pose.x} ${pose.y}) rotate(${pose.angle})`, class: "map-bus-stop", "data-bus-stop": stop.id });
+        add(group, "title").textContent = `${stop.name} bus stop`;
+        add(group, "path", { d: "M-20 -6H16", class: "map-bus-stop-curb" });
+        add(group, "rect", { x: -13, y: 0, width: 24, height: 7, rx: 1.4, class: "map-bus-shelter" });
+        add(group, "path", { d: "M-10 4H8", class: "map-bus-stop-bench" });
+        const sign = add(group, "g", { transform: `translate(21 0) rotate(${-pose.angle})` });
+        add(sign, "rect", { x: -5.5, y: -6.5, width: 11, height: 13, rx: 2, class: "map-bus-stop-sign" });
+        add(sign, "text", { y: 3, "text-anchor": "middle", class: "map-bus-stop-letter" }).textContent = "B";
+        const overflow = add(layers.transitPeople, "text", { class: "map-stop-overflow", "text-anchor": "middle", display: "none" });
+        transitStops.set(stop.id, { stop, road, pose, group, overflow });
+      }
+      for (const school of data.schools || []) {
+        const group = add(layers.schoolActivity, "g", { transform: `translate(${school.gate.x - 77} ${school.gate.y - 12})`, class: "map-school-badge" });
+        add(group, "rect", { x: -59, y: -10, width: 118, height: 20, rx: 4 });
+        const label = add(group, "text", { y: 4, "text-anchor": "middle" });
+        schoolBadges.set(school.id, { group, label });
+      }
+    }
+
+    function transitPoint(stopId, slot, kind) {
+      const entry = transitStops.get(stopId);
+      if (!entry) return null;
+      const { stop, road } = entry;
+      const at = pathPose(road.surface, stop.progress, Boolean(stop.reverse), laneCenter(road.street));
+      if (kind === "door" || kind === "rear-door") {
+        const along = kind === "rear-door" ? -10 : 10;
+        return { x: at.x + Math.cos(at.angle * Math.PI / 180) * along - Math.sin(at.angle * Math.PI / 180) * 6,
+          y: at.y + Math.sin(at.angle * Math.PI / 180) * along + Math.cos(at.angle * Math.PI / 180) * 6 };
+      }
+      const curb = pathPose(road.surface, stop.progress, Boolean(stop.reverse), roadHalfWidth(road.street) + 18);
+      const angle = curb.angle * Math.PI / 180;
+      const along = kind === "away" ? 40 : -16.5 + (slot % maxVisibleStopPeople) * 11;
+      return { x: curb.x + Math.cos(angle) * along, y: curb.y + Math.sin(angle) * along };
+    }
+
+    function animateTransport(fraction) {
+      const desired = new Set();
+      const motions = currentMotion.passengerMotions || [];
+      const representativeMotions = new Map();
+      for (const kind of ["boarding", "alighting", "walking-away"]) for (const motion of motions) {
+        if (motion.kind === kind && motion.stopId && !representativeMotions.has(motion.stopId)) representativeMotions.set(motion.stopId, motion);
+      }
+      for (const [stopId, entry] of transitStops) {
+        const retained = motions.find(motion => motion.stopId === stopId && motion.id === entry.movingPersonId);
+        if (retained) representativeMotions.set(stopId, retained);
+        entry.movingPersonId = representativeMotions.get(stopId)?.id || null;
+      }
+      const previousWaitingSlots = new Map();
+      for (const stop of previousMotion.busStops || []) {
+        stop.waiting.slice(0, maxVisibleStopPeople).forEach((person, index) => previousWaitingSlots.set(person.id, index));
+      }
+      const place = (id, point, child, distance = 0, total = 0, dx = 0, dy = 0, stopId = null, scale = 1) => {
+        if (!point) return;
+        desired.add(id);
+        let person = transitPeople.get(id);
+        if (!person) {
+          const jacket = child ? "#c88447" : pedestrianJackets[Array.from(id).reduce((sum, c) => sum + c.charCodeAt(0), 0) % pedestrianJackets.length];
+          person = createCrossingPerson(layers.transitPeople, "transit", jacket);
+          person.group.classList.add("map-transit-person", "is-visible");
+          person.group.dataset.personId = id;
+          transitPeople.set(id, person);
+        }
+        if (stopId) person.group.dataset.stopId = stopId;
+        else delete person.group.dataset.stopId;
+        person.group.setAttribute("transform", `translate(${point.x.toFixed(2)} ${point.y.toFixed(2)}) scale(${scale})`);
+        const length = Math.hypot(dx, dy) || 1;
+        posePedestrian(person, distance, total, dx / length, dy / length);
+      };
+      for (const state of currentMotion.busStops || []) {
+        const entry = transitStops.get(state.id);
+        const visibleWaiting = Math.min(state.waiting.length, maxVisibleStopPeople - Number(representativeMotions.has(state.id)));
+        const extraWaiting = state.waiting.length - visibleWaiting;
+        if (entry) {
+          entry.group.setAttribute("aria-label", `${entry.stop.name} bus stop, ${state.waiting.length} people waiting`);
+          entry.overflow.setAttribute("display", extraWaiting ? "inline" : "none");
+          entry.overflow.setAttribute("aria-label", `${extraWaiting} additional people waiting`);
+          if (extraWaiting) {
+            const point = transitPoint(state.id, maxVisibleStopPeople - 1, "platform"), angle = entry.pose.angle * Math.PI / 180;
+            entry.overflow.setAttribute("x", point.x + Math.cos(angle) * 26);
+            entry.overflow.setAttribute("y", point.y + Math.sin(angle) * 26 - 2);
+            entry.overflow.textContent = `+${extraWaiting}`;
+          }
+        }
+        state.waiting.slice(0, visibleWaiting).forEach((person, index) => {
+          place(person.id, transitPoint(state.id, index, "platform"), person.child, 0, 0, 0, 0, state.id);
+        });
+      }
+      const previous = new Map((previousMotion.passengerMotions || []).map(item => [item.id, item]));
+      for (const motion of currentMotion.passengerMotions || []) {
+        if (motion.stopId && representativeMotions.get(motion.stopId) !== motion) continue;
+        const before = previous.get(motion.id);
+        const progress = before?.kind === motion.kind ? mix(before.progress, motion.progress, fraction) : motion.progress;
+        let start, end, via;
+        if (motion.schoolId) {
+          const school = (data.schools || []).find(item => item.id === motion.schoolId);
+          const road = school && roads.get(school.streetId);
+          if (!road) continue;
+          start = pathPose(road.surface, school.progress, Boolean(school.reverse), roadHalfWidth(road.street) + 12);
+          via = school.gate;
+          end = school.entrance;
+          if (motion.kind === "school-pickup") [start, end] = [end, start];
+        } else {
+          const slot = previousWaitingSlots.get(motion.id) ?? motion.slot % maxVisibleStopPeople;
+          start = transitPoint(motion.stopId, slot, "platform");
+          end = transitPoint(motion.stopId, slot, motion.kind === "walking-away" ? "away" : "door");
+          if (motion.kind === "alighting") [start, end] = [transitPoint(motion.stopId, slot, "rear-door"), start];
+        }
+        if (!start || !end) continue;
+        const a = via && progress < .5 ? start : via || start;
+        const b = via && progress < .5 ? via : end;
+        const local = via ? progress < .5 ? progress * 2 : (progress - .5) * 2 : progress;
+        const length = Math.hypot(b.x - a.x, b.y - a.y);
+        place(motion.id, { x: mix(a.x, b.x, local), y: mix(a.y, b.y, local) }, motion.child,
+          local * length, length, b.x - a.x, b.y - a.y, motion.stopId, motion.schoolId ? .47 : 1);
+      }
+      for (const [id, person] of transitPeople) if (!desired.has(id)) {
+        person.group.remove();
+        transitPeople.delete(id);
+      }
+      for (const school of currentMotion.schools || []) {
+        const badge = schoolBadges.get(school.id);
+        if (!badge) continue;
+        badge.group.dataset.phase = school.phase;
+        badge.label.textContent = school.phase === "closed" ? "School · quiet" : `${school.phase === "pickup" ? "Pickup" : "Drop-off"} · ${school.carsInNetwork} cars`;
       }
     }
 
@@ -540,7 +726,7 @@
         const next = {
           closed: Boolean(road.manualClosed ?? (road.closed && !road.workClosed)),
           breakdown: Boolean(road.breakdown), breakdownRecovering: Boolean(road.breakdownRecovering),
-          manualBreakdown: Boolean(road.manualBreakdown ?? (road.breakdown && !road.autoBreakdown)),
+          manualBreakdown: Boolean(road.manualBreakdownActive ?? ((road.manualBreakdown ?? road.breakdown) && !road.autoBreakdown)),
           bikeOnly: Boolean(road.bikeOnly), surfaceWeather
         };
         entry.casing.classList.toggle("closed", next.closed);
@@ -621,10 +807,7 @@
         add(barrier, "path", { d: hatches.join(" "), class: "map-roadwork-barrier-hatch" });
       }
 
-      const { roadSamples, occupied } = getRoadsideGeometry();
-      const taken = [...occupied, ...[...crossings.values()].map((mark) => mark.spot),
-        ...[...roadworkMarkers.values()].map((mark) => mark.spot)];
-      const spot = roadsideBadgePosition(anchor, radius, roadSamples, taken, 42, 15);
+      const spot = placeRoadsideBadge(anchor, radius, 42, 15);
       const angle = anchor.angle * Math.PI / 180;
       const group = add(layers.roadworks, "g", {
         class: "map-roadwork-marker", role: "button", tabindex: "0", "data-roadwork-target": road.street.id
@@ -642,10 +825,22 @@
       const label = add(badge, "text", { x: -18, class: "map-roadwork-label" });
       add(badge, "rect", { x: -42, y: -15, width: 84, height: 30, rx: 5, class: "map-roadwork-hit" });
       const mark = { group, site, paving, spot, label, plate, streetId: road.street.id, tooltip: "", state: null, progress: null };
+      bindRoadsideBadge(mark, job.streetId);
+      return mark;
+    }
+
+    function placeRoadsideBadge(anchor, radius, halfWidth, halfHeight) {
+      const { roadSamples, occupied } = getRoadsideGeometry();
+      const marks = [...crossings.values(), ...roadworkMarkers.values(), ...breakdownTimers.values()];
+      return roadsideBadgePosition(anchor, radius, roadSamples, [...occupied, ...marks.map((mark) => mark.spot)], halfWidth, halfHeight);
+    }
+
+    function bindRoadsideBadge(mark, streetId) {
+      const { group, plate } = mark;
       const show = () => showTooltip(plate, mark.tooltip);
       const select = () => {
         show();
-        onStreetSelect(job.streetId);
+        onStreetSelect(streetId);
       };
       group.addEventListener("pointerenter", show);
       group.addEventListener("pointerleave", () => { if (document.activeElement !== group) hideTooltip(plate); });
@@ -662,7 +857,6 @@
         }
         if (event.key === "Escape") hideTooltip(plate);
       });
-      return mark;
     }
 
     function prepareRoadworkTracks() {
@@ -724,6 +918,74 @@
           mark.progress = length;
           mark.reverse = to.reverse;
         }
+      }
+    }
+
+    function drawBreakdownFlag(flag) {
+      add(flag, "path", { d: "M0 -6.4L6.4 0 0 6.4 -6.4 0Z", class: "map-breakdown-diamond" });
+      add(flag, "path", { d: "M0 -2.9V.65M0 2.7V2.8", class: "map-breakdown-exclamation" });
+    }
+
+    function createBreakdownTimer(incident, road) {
+      const progress = clamp(finite(incident.progress), 0, 1);
+      const reverse = Boolean(incident.reverse);
+      const anchor = pathPose(road.surface, progress, reverse);
+      const carPose = pathPose(road.surface, progress, reverse, laneCenter(road.street));
+      if (!anchor || !carPose) return null;
+      const spot = placeRoadsideBadge(anchor, roadHalfWidth(road.street), 29, 15);
+      const group = add(layers.breakdownTimers, "g", {
+        class: "map-breakdown-timer", role: "button", tabindex: "0",
+        "data-breakdown-street": incident.streetId, "data-breakdown-vehicle": incident.vehicleId
+      });
+      const link = add(group, "line", { x1: carPose.x, y1: carPose.y, x2: spot.x, y2: spot.y,
+        class: "map-breakdown-timer-link", "aria-hidden": "true" });
+      const badge = add(group, "g", { transform: `translate(${spot.x} ${spot.y})`, "aria-hidden": "true" });
+      const plate = add(badge, "rect", { x: -29, y: -10.5, width: 58, height: 21, rx: 5, class: "map-breakdown-timer-plate" });
+      drawBreakdownFlag(add(badge, "g", { transform: "translate(-17 0)" }));
+      const label = add(badge, "text", { x: -6, class: "map-breakdown-timer-label" });
+      add(badge, "rect", { x: -29, y: -15, width: 58, height: 30, rx: 5, class: "map-breakdown-timer-hit" });
+      const mark = { group, spot, link, label, plate, incident, tooltip: "" };
+      bindRoadsideBadge(mark, incident.streetId);
+      return mark;
+    }
+
+    function prepareBreakdownTimers() {
+      const active = currentMotion.incidents || snapshot?.incidents || [];
+      incidentsByVehicle = new Map(active.map((incident) => [String(incident.vehicleId), incident]));
+      const live = new Map(active.map((incident) => [incident.id, incident]));
+      for (const [key, mark] of breakdownTimers) {
+        const incident = live.get(key);
+        if (incident?.streetId === mark.incident.streetId && incident.vehicleId === mark.incident.vehicleId &&
+          incident.reverse === mark.incident.reverse && incident.progress === mark.incident.progress) continue;
+        if (activeTooltipTarget === mark.plate) hideTooltip(mark.plate);
+        mark.group.remove();
+        breakdownTimers.delete(key);
+      }
+      for (const incident of active) {
+        const road = roads.get(incident.streetId);
+        if (!road) continue;
+        let mark = breakdownTimers.get(incident.id);
+        if (!mark) {
+          mark = createBreakdownTimer(incident, road);
+          if (!mark) continue;
+          breakdownTimers.set(incident.id, mark);
+        }
+        mark.incident = incident;
+        const seconds = Math.max(0, Math.ceil(finite(incident.remaining)));
+        const description = incident.plate ? `${incident.plate} broke down` : "Car breakdown";
+        const tooltipText = `${incident.streetId} · ${description} · ${seconds}s remaining`;
+        if (mark.tooltip === tooltipText) continue;
+        mark.label.textContent = `${seconds}s`;
+        mark.group.setAttribute("aria-label", `${incident.streetId} car breakdown, ${seconds} seconds remaining. Select street.`);
+        mark.tooltip = tooltipText;
+        if (activeTooltipTarget === mark.plate) updateTooltipText(tooltipText);
+      }
+    }
+
+    function positionBreakdownTimers() {
+      for (const mark of breakdownTimers.values()) {
+        const pose = vehicleMarkers.get(String(mark.incident.vehicleId))?.position;
+        if (pose) setLinePoints(mark.link, { x1: pose.x, y1: pose.y, x2: mark.spot.x, y2: mark.spot.y });
       }
     }
 
@@ -1253,70 +1515,122 @@
       }
     }
 
+    function makeBusGlyph(bus) {
+      add(bus, "ellipse", { cy: 1.2, rx: 19.5, ry: 7.3, class: "map-car-shadow" });
+      for (const x of [-12.5, 9]) for (const y of [-6.9, 5.2]) {
+        add(bus, "rect", { x, y, width: 4.2, height: 1.7, rx: .6, class: "map-car-tire" });
+      }
+      add(bus, "rect", { x: -18, y: -6.2, width: 36, height: 12.4, rx: 3.7, class: "map-bus-body" });
+      add(bus, "rect", { x: -12.8, y: -4.2, width: 24.5, height: 8.4, rx: 1.5, class: "map-bus-roof" });
+      for (const x of [-11.5, -6, -.5, 5]) for (const y of [-5.5, 4.2]) {
+        add(bus, "rect", { x, y, width: 4.4, height: 1.35, rx: .4, class: "map-bus-window" });
+      }
+      add(bus, "rect", { x: 12.7, y: -4.6, width: 2.8, height: 9.2, rx: .9, class: "map-bus-windscreen" });
+      add(bus, "rect", { x: -5.5, y: -2, width: 7.5, height: 4, rx: .8, class: "map-bus-roof-vent" });
+      add(bus, "path", { d: "M16.5 -4v1.7m0 4.6V4", class: "map-bus-headlights" });
+      add(bus, "path", { d: "M-16.7 -4v1.7m0 4.6V4", class: "map-bus-tail-lights" });
+      add(bus, "path", { d: "M9 5h4.2", class: "map-bus-door" });
+      add(bus, "path", { d: "M-13 5h4.2", class: "map-bus-door" });
+    }
+
     function makeCraneGlyph(crane) {
-      add(crane, "ellipse", { cy: 1.1, rx: 13, ry: 5.8, class: "map-car-shadow" });
-      for (const y of [-5.85, 3.65]) {
-        for (const x of [-10.75, -6.85, 4.9, 8.55]) {
-          add(crane, "rect", { x, y, width: 2.85, height: 2.2, rx: .65, class: "map-car-tire" });
+      add(crane, "ellipse", { cy: 1.05, rx: 13.1, ry: 5.5, class: "map-car-shadow" });
+      const stabilizers = add(crane, "g", { class: "map-crane-raised map-crane-stabilizers" });
+      for (const side of [-1, 1]) {
+        for (const x of [-7.7, 5.2]) {
+          const padX = x + Math.sign(x) * 1.45;
+          const padY = side * 7.85;
+          add(stabilizers, "path", { d: `M${x} ${side * 2.6}L${padX} ${padY}`, class: "map-crane-outrigger" });
+          add(stabilizers, "rect", { x: padX - 1.45, y: padY - .9, width: 2.9, height: 1.8, rx: .4, class: "map-crane-outrigger-pad" });
+        }
+        for (const x of [-10.8, -6.6, 4.1, 8.15]) {
+          add(crane, "rect", { x, y: side * 4.55 - 1.22, width: 3.05, height: 2.44, rx: .6, class: "map-car-tire" });
         }
       }
-      add(crane, "rect", { x: -12, y: -4.55, width: 23.9, height: 9.1, rx: 1.2, class: "map-crane-chassis" });
-      add(crane, "rect", { x: -11.1, y: -3.45, width: 14.8, height: 6.9, rx: .65, class: "map-crane-deck" });
-      add(crane, "path", { d: "M4.2 -4.14H9.8Q11.55 -4.14 11.55 -2.4V2.4Q11.55 4.14 9.8 4.14H4.2Z", class: "map-crane-cab" });
-      add(crane, "path", { d: "M6.7 -3.28H9.43Q10.47 -3.28 10.47 -2.32V2.32Q10.47 3.28 9.43 3.28H8.4L9.06 2.07V-2.04H6.7Z", class: "map-crane-windshield" });
-      add(crane, "path", { d: "M11 -3.1h.7v1.25H11zM11 1.85h.7V3.1H11z", class: "map-car-light" });
-      add(crane, "rect", { x: -10.6, y: -2.7, width: 5.8, height: 5.4, rx: .8, class: "map-crane-counterweight" });
-      add(crane, "circle", { cx: -6.3, r: 2.25, class: "map-crane-pivot" });
-      add(crane, "path", { d: "M-11.83 -3.3h.85v1.6h-.85zM-11.83 1.7h.85v1.6h-.85z", class: "map-car-brake" });
+      add(crane, "path", {
+        d: "M-12.15 -2.15H-3.3L-1.65 -1.65H2.75L4.1 -2.85H11.5V2.85H4.1L2.75 1.65H-1.65L-3.3 2.15H-12.15Z",
+        class: "map-crane-chassis"
+      });
+      add(crane, "path", {
+        d: "M-11.85 -2.9Q-11.8 -3.75-10.85 -3.75H-6.75L-4.6 -2.25V2.25L-6.75 3.75H-10.85Q-11.8 3.75-11.85 2.9Z",
+        class: "map-crane-counterweight"
+      });
+      add(crane, "path", { d: "M-11 -2.6l1.65 1.65m-1.65.25 1.65 1.65m-1.65.25 1.35 1.35", class: "map-crane-counterweight-stripes" });
+      add(crane, "path", {
+        d: "M4.25 -2.75H8.35Q9.4 -2.75 10.15 -2.04L11.95 -.25V3.65H4.25Z",
+        class: "map-crane-cab"
+      });
+      add(crane, "path", { d: "M6.75 -1.85H8.2L10.77 .1V2.6H8.72V.23L6.75 -.28Z", class: "map-crane-windshield" });
+      add(crane, "path", { d: "M11.72 .34v1.2m0 .94v.65", class: "map-crane-headlights" });
+      add(crane, "circle", { cx: -6.04, r: 3.02, class: "map-crane-pivot" });
+      makeCraneBoom(crane, false);
+      makeCraneBoom(crane, true);
+    }
 
-      const folded = add(crane, "g", { class: "map-crane-folded" });
-      add(folded, "path", { d: "M-6.75 -1.45H3.85V-1.05H8.8V-.78H12.3V.62H8.85V.91H3.85V1.35H-6.75Z", class: "map-crane-boom" });
-      add(folded, "path", { d: "M-5.58 -.74H2.8M4.4 -.43H7.6M9.35 -.21H11.7", class: "map-crane-boom-detail" });
-      add(folded, "path", { d: "M12.35 -.33h.9v1.5q0 .77-.66.77t-.6-.53", class: "map-crane-hook" });
+    function makeCraneBoom(crane, working) {
+      const baseX = -6.04;
+      const angle = working ? -36 : -29;
+      const reach = working ? 24.45 : 21.05;
+      const elbow = working ? 16.25 : 14.2;
+      const mode = add(crane, "g", { class: working ? "map-crane-raised" : "map-crane-folded" });
+      const boom = add(mode, "g", { transform: `translate(${baseX} 0) rotate(${angle})` });
+      add(boom, "path", {
+        d: `M-.95 -2.03H8.95V-1.46H${elbow}v.45H${reach}v2.02H${elbow}v.45H8.95v.57H-.95Z`,
+        class: "map-crane-boom"
+      });
+      add(boom, "path", { d: `M8.95 -1.42H${elbow}v2.84H8.95Z`, class: "map-crane-boom-sleeve" });
+      add(boom, "path", { d: `M${elbow} -1H${reach}v2H${elbow}Z`, class: "map-crane-boom-tip" });
+      add(boom, "path", { d: `M1.45 -1.02H7.83M10 -.69H${elbow - 1.25}`, class: "map-crane-boom-detail" });
+      add(boom, "circle", { r: 1.07, class: "map-crane-boom-pin" });
 
-      const raised = add(crane, "g", { class: "map-crane-raised" });
-      add(raised, "path", { d: "M-6.9 -1.55L.68 -8.4 8.1 -9.1 12.55 -8.65 12.6 -7.48 8.1 -7.57 1.59 -6.42-5.6 .58Z", class: "map-crane-boom" });
-      add(raised, "path", { d: "M-6.05 -1.4L1.07 -7.52 7.8 -8.24M8.7 -8.38L11.72 -8.08", class: "map-crane-boom-detail" });
-      add(raised, "path", { d: "M12.56 -8.03V-3.2q0 1.35-.97 1.35-.83 0-.83-.75", class: "map-crane-hook" });
+      const radians = angle * Math.PI / 180;
+      const tipX = (baseX + Math.cos(radians) * (reach - .22)).toFixed(2);
+      const tipY = (Math.sin(radians) * (reach - .22)).toFixed(2);
+      const drop = working ? 5.45 : 3.9;
+      add(mode, "path", { d: `M${tipX} ${tipY}v${drop}q0 1.74-1.34 1.74-1.16 0-1.16-.98`, class: "map-crane-hook" });
     }
 
     function makeMotorbikeGlyph(bike) {
-      add(bike, "ellipse", { cy: 1.6, rx: 6.7, ry: 2.85, class: "map-car-shadow" });
-      for (const cx of [-4.6, 4.7]) {
-        add(bike, "circle", { cx, cy: 1.35, r: 2.23, class: "map-motorbike-tire" });
-        add(bike, "circle", { cx, cy: 1.35, r: .8, class: "map-motorbike-hub" });
+      // Match the cars' overhead view, with the front pointing along +X.
+      // A side-view rider appears inverted when westbound traffic rotates 180°.
+      add(bike, "ellipse", { cy: .4, rx: 7.6, ry: 3.5, class: "map-car-shadow" });
+      for (const x of [-7.2, 4]) {
+        add(bike, "rect", { x, y: -1.05, width: 3.7, height: 2.1, rx: .8, class: "map-motorbike-tire" });
       }
       add(bike, "path", {
-        d: "M-4.65 .08Q-3.6 -1.12-1.95 -.96L-.64 -1.82Q.88 -2.44 2.49 -1.78L3.63 -1.29 4.86 1.18 3.87 1.61 2.34 -.27 1.46 1.95H-.91L-2.39 .39-4.42 .63Z",
+        d: "M-5.2 -1.5Q-3.2 -2.2-.3 -1.75L4.9 -.9V.9L-.3 1.75Q-3.2 2.2-5.2 1.5Z",
         class: "map-motorbike-body"
       });
-      add(bike, "path", { d: "M-3.74 1.79H-.35M3.73 -.88l.67 1.61", class: "map-motorbike-chrome" });
-      add(bike, "path", { d: "M-4.43 -.14H-3.08M3.84 -.65l.6 .12", class: "map-motorbike-lights" });
-      add(bike, "path", { d: "M-2.8 -1.6-1.14 -.29-1.54 1.12", class: "map-motorbike-trousers" });
-      add(bike, "path", { d: "M-2.78 -1.38Q-2.62 -3.6-.41 -4.01L.92 -3.19-1.03 -1.5Z", class: "map-motorbike-rider" });
-      add(bike, "path", { d: "M-.13 -3.21 1.07 -2.01 3.17 -2.34", class: "map-motorbike-arm" });
-      add(bike, "circle", { cx: .69, cy: -4.69, r: 1.55, class: "map-motorbike-helmet" });
-      add(bike, "path", { d: "M.86 -4.92H2.02L1.84 -4.18H1.23Z", class: "map-motorbike-visor" });
+      add(bike, "rect", { x: -4.6, y: -1.15, width: 3.8, height: 2.3, rx: 1, class: "map-motorbike-seat" });
+      add(bike, "path", { d: "M3.8 -3v6M-4.6 2.15H-1.4", class: "map-motorbike-chrome" });
+      add(bike, "path", { d: "M-2.3 -1.25-1.1 -2.5 .3 -2.25M-2.3 1.25-1.1 2.5 .3 2.25", class: "map-motorbike-trousers" });
+      add(bike, "ellipse", { cx: -1.5, rx: 2.3, ry: 1.8, class: "map-motorbike-rider" });
+      add(bike, "path", { d: "M-1.2 -1.5 .9 -2.6 3.8 -2.6M-1.2 1.5 .9 2.6 3.8 2.6", class: "map-motorbike-arm" });
+      add(bike, "circle", { cx: .8, r: 1.8, class: "map-motorbike-helmet" });
+      add(bike, "path", { d: "M1.25 -1.25Q2.4 0 1.25 1.25L1.5 0Z", class: "map-motorbike-visor" });
+      add(bike, "path", { d: "M6.1 -.7v1.4", class: "map-motorbike-lights" });
+      add(bike, "path", { d: "M-5.7 -.7v1.4", class: "map-motorbike-tail-light" });
     }
 
     function createVehicleMarker(vehicle) {
       const key = String(vehicle.id);
       const bike = vehicle.type === "bike";
       const crane = vehicle.type === "crane";
+      const bus = vehicle.type === "bus";
       const group = add(layers.vehicles, "g", {
-        class: `map-vehicle-marker${bike ? " is-bike" : ""}${crane ? " is-crane" : ""}`,
+        class: `map-vehicle-marker${bike ? " is-bike" : ""}${crane ? " is-crane" : ""}${bus ? " is-bus" : ""}`,
         tabindex: "0",
         role: "button",
         "data-vehicle-key": key
       });
       const color = ["#42947c", "#aa9549", "#548ab5", "#ba7f63"];
       const hash = Array.from(key).reduce((value, character) => value + character.charCodeAt(0), 0);
-      if (!bike && !crane) group.style.setProperty("--map-car-tone", color[hash % color.length]);
-      const hitRadius = crane ? 13.5 : 11;
+      if (!bike && !crane && !bus) group.style.setProperty("--map-car-tone", color[hash % color.length]);
+      const hitRadius = bus ? 19 : crane ? 13.5 : 11;
       add(group, "rect", { x: -hitRadius, y: -7.5, width: 2 * hitRadius, height: 15, rx: 5, class: "map-vehicle-hitarea", "aria-hidden": "true" });
-      add(group, "ellipse", { rx: crane ? 14.5 : 12, ry: crane ? 9.5 : 12, class: "map-vehicle-selection-ring", "aria-hidden": "true" });
-      add(group, "use", { href: bike ? "#mapBikeGlyph" : crane ? "#mapCraneGlyph" : "#mapCarGlyph",
-        transform: bike ? "scale(1.05)" : crane ? "scale(.94)" : "scale(.83)", "aria-hidden": "true" });
+      add(group, "ellipse", { rx: bus ? 22 : crane ? 14.5 : 12, ry: crane ? 9.5 : 12, class: "map-vehicle-selection-ring", "aria-hidden": "true" });
+      add(group, "use", { href: bike ? "#mapBikeGlyph" : crane ? "#mapCraneGlyph" : bus ? "#mapBusGlyph" : "#mapCarGlyph",
+        transform: bike ? "scale(1.05)" : crane ? "scale(.94)" : bus ? "scale(1)" : "scale(.83)", "aria-hidden": "true" });
       const marker = { group, data: vehicle, position: null, completed: false };
       const select = () => {
         showTooltip(group, vehicleTooltipText(marker));
@@ -1343,6 +1657,11 @@
 
     function vehicleStatus(vehicle, completed = false) {
       if (completed) return "Journey complete";
+      const incident = incidentsByVehicle.get(String(vehicle.id));
+      if (incident) return `Broken down · ${Math.max(0, Math.ceil(finite(incident.remaining)))}s remaining`;
+      if (vehicle.brokenDown) return "Broken down";
+      if (vehicle.bus?.stage === "boarding") return `Boarding at ${vehicle.bus.stopName} · ${Math.ceil(vehicle.bus.remaining)}s until departure`;
+      if (vehicle.bus?.stage === "rejoining") return "Waiting for space to pull away";
       const work = roadworksByVehicle.get(String(vehicle.id));
       if (work?.state === "working") return `Resurfacing ${work.streetId}`;
       if (work?.state === "clearing") return `Waiting for ${work.streetId} to clear`;
@@ -1370,6 +1689,8 @@
       marker.group.classList.toggle("is-selected", vehicle.id === renderOptions.selectedVehicleId);
       marker.group.classList.toggle("is-complete", completed);
       marker.group.classList.toggle("is-queued", !completed && vehicle.waitingReason === "breakdown");
+      marker.group.classList.toggle("is-broken-down", !completed &&
+        Boolean(vehicle.brokenDown || incidentsByVehicle.has(String(vehicle.id))));
       marker.group.classList.toggle("is-working", vehicle.type === "crane" && !completed &&
         roadworksByVehicle.get(String(vehicle.id))?.state === "working");
       const type = vehicleTypeLabel(vehicle.type).toLowerCase();
@@ -1382,6 +1703,8 @@
       const interval = currentMotion ? next.time - currentMotion.time : Infinity;
       const newRun = !currentMotion || next.generation !== currentMotion.generation || interval < 0;
       if (newRun) {
+        for (const person of transitPeople.values()) person.group.remove();
+        transitPeople.clear();
         for (const marker of vehicleMarkers.values()) marker.group.remove();
         vehicleMarkers.clear();
         if (activeTooltipTarget?.classList.contains("map-vehicle-marker")) hideTooltip();
@@ -1402,9 +1725,9 @@
         tracks.push({ marker, from: previous.get(key) || vehicle, to: vehicle });
         previous.delete(key);
       }
-      // Keep the last leg visible through its exit tick. A selected completed
-      // trip keeps the very same marker and remains inspectable at the exit.
+      // Keep cars and motorbikes visible through the last leg's exit tick.
       for (const [key, vehicle] of previous) {
+        if (vehicle.type === "crane") continue;
         const marker = vehicleMarkers.get(key) || createVehicleMarker(vehicle);
         configureMarker(marker, vehicle);
         tracks.push({ marker, from: vehicle, to: { ...vehicle, progress: 1, nextStreetId: null } });
@@ -1414,7 +1737,7 @@
         const complete = snapshot?.completed?.find((vehicle) => vehicle.id === selected);
         const existing = vehicleMarkers.get(String(selected));
         const last = complete?.route?.at(-1) || existing?.data;
-        if (last) {
+        if (last && (complete?.type ?? existing?.data.type) !== "crane") {
           const terminal = { ...complete, ...last, progress: 1, nextStreetId: null };
           const marker = existing || createVehicleMarker(terminal);
           configureMarker(marker, terminal, true);
@@ -1515,7 +1838,8 @@
 
     function positionVehicle(marker, pose) {
       if (!pose) return;
-      const layer = pose.elevated ? layers.elevatedVehicles : layers.vehicles;
+      const layer = marker.group.classList.contains("is-broken-down") ? layers.stalledVehicles :
+        pose.elevated ? layers.elevatedVehicles : layers.vehicles;
       if (marker.group.parentNode !== layer) {
         if (typeof layer.moveBefore === "function") layer.moveBefore(marker.group, null);
         else {
@@ -1537,6 +1861,7 @@
       lastFraction = fraction;
       if (motionDirty) {
         prepareRoadworkTracks();
+        prepareBreakdownTimers();
         prepareVehicleTracks();
         preparePedestrianTracks();
       }
@@ -1544,7 +1869,9 @@
       for (const { marker, from, to } of vehicleTracks) {
         positionVehicle(marker, interpolateVehicle(from, to, fraction));
       }
+      positionBreakdownTimers();
       animatePedestrians(fraction);
+      animateTransport(fraction);
       animateRoadworks(fraction);
       const hovered = activeTooltipTarget;
       if (hovered?.classList.contains("map-vehicle-marker")) {
@@ -1597,7 +1924,7 @@
 
     function handleMapClick(event) {
       if (suppressClick) return;
-      const interactive = event.target.closest?.(".map-street-hit, .map-signal-hit, .map-vehicle-marker, .map-crossing-hit, .map-roadwork-hit");
+      const interactive = event.target.closest?.(".map-street-hit, .map-signal-hit, .map-vehicle-marker, .map-crossing-hit, .map-roadwork-hit, .map-breakdown-timer-hit");
       if (interactive) return;
       hideTooltip();
       onStreetSelect(null);
@@ -1615,7 +1942,7 @@
 
     function handlePointerDown(event) {
       if (event.button !== 0 && event.pointerType !== "touch") return;
-      if (event.target.closest?.(".map-signal-hit, .map-vehicle-marker, .map-crossing-hit, .map-roadwork-hit")) return;
+      if (event.target.closest?.(".map-signal-hit, .map-vehicle-marker, .map-crossing-hit, .map-roadwork-hit, .map-breakdown-timer-hit")) return;
       const point = svgPoint(event);
       drag = { id: event.pointerId, start: point, origin: { ...transform }, moved: false };
     }
@@ -1679,9 +2006,12 @@
     }
 
     function focusVehicle(id) {
-      const vehicle = snapshot?.vehicles?.find((item) => item.id === id);
+      const live = currentMotion?.vehicles?.find((item) => item.id === id);
+      const vehicle = live || snapshot?.vehicles?.find((item) => item.id === id);
       const completed = vehicle ? null : snapshot?.completed?.find((item) => item.id === id);
-      let pose = vehicleMarkers.get(String(id))?.position;
+      const marker = vehicleMarkers.get(String(id));
+      if (!live && (vehicle?.type ?? completed?.type ?? marker?.data.type) === "crane") return false;
+      let pose = marker?.position;
       if (!pose && vehicle) pose = vehiclePose(vehicle, vehicle.progress, finite(vehicle.breakdownBypass));
       if (!pose && completed?.route?.length) {
         const last = completed.route[completed.route.length - 1];
@@ -1707,7 +2037,7 @@
       if ("selectedVehicleId" in nextOptions && renderOptions.selectedVehicleId !== nextOptions.selectedVehicleId) motionDirty = true;
       renderOptions = { ...renderOptions, ...nextOptions };
       setMotion(motion);
-      if (motion && (!motion.crossings || !motion.roadworks)) motionDirty = true;
+      if (motion && (!motion.crossings || !motion.roadworks || !motion.incidents)) motionDirty = true;
       renderRoadStates();
       if (previouslySelectedStreet !== renderOptions.selectedStreetId) {
         paintRoad(previouslySelectedStreet);
@@ -1725,10 +2055,6 @@
     function setTheme(theme) {
       const dark = theme === "dark";
       svg.dataset.theme = dark ? "dark" : "light";
-      const cloud = layers.clouds.querySelector("image");
-      const source = dark ? "./assets/cloud-dark.png" : "./assets/cloud-light.png";
-      cloud.setAttribute("href", source);
-      cloud.setAttributeNS(XLINK_NS, "xlink:href", source);
     }
 
     function clearSelection() {

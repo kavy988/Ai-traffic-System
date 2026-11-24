@@ -6,7 +6,7 @@
     if ($('runStatus')) $('runStatus').textContent = 'Unable to load. Refresh this page.';
     return;
   }
-  const engine = window.TrafficSim.create(data, { seed: 42, autoPedestrians: true, autoBreakdowns: true });
+  const engine = window.TrafficSim.create(data, { seed: 42, autoPedestrians: true, autoBreakdowns: true, autoCranes: true, autoBuses: true, schoolTraffic: true, realisticTraffic: true });
   const mlControl = window.TrafficMLControl.create(engine, { seed: 42 });
   // The queue-aware controller is a rules baseline; external models connect through this adapter.
   window.signalStudio = { engine, data, ml: mlControl, version: '2.3' };
@@ -24,6 +24,9 @@
   let currentSpeed = 1;
   let simulationRunning = true;
   let selectedControllerId = 'adaptive';
+  let registeredModel = null;
+  let comparisonReport = null;
+  let comparisonRunning = false;
   let lastScenarioAction = { time: 0, message: 'Seeded traffic ready' };
   let lastEventKey = '';
   let toastTimer;
@@ -38,10 +41,16 @@
     car: 'Track a car when one enters the network.',
     bike: 'Track a bike when one enters the network.',
     pedestrians: 'Wait for pedestrians to arrive or request a crossing.',
-    crane: 'Dispatch a crane from Add Activity to track it.'
+    crane: 'Waiting for a crane. You can also dispatch one from Add Activity.',
+    bus: 'Waiting for the next city bus. You can also add one from Add Activity.'
   };
   const fmt = (n) => Math.round(Number(n) || 0).toLocaleString();
   const clock = (n) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(Math.floor(n % 60)).padStart(2, '0')}`;
+  function timeOfDayLabel(seconds, withSeconds = true) {
+    const hour = Math.floor(seconds / 3600);
+    const minuteSecond = clock(seconds % 3600);
+    return `${hour % 12 || 12}:${withSeconds ? minuteSecond : minuteSecond.slice(0, 2)} ${hour < 12 ? 'AM' : 'PM'}`;
+  }
   const simulatedAge = (seconds, sampleCount) => {
     if (!Number.isFinite(seconds) || seconds < 0) return sampleCount > 0 ? 'age unavailable' : 'no completed trips';
     const age = Math.floor(seconds);
@@ -171,9 +180,9 @@
     const numeric = Math.max(0, Math.min(3, Number(value) || 0));
     const range = $('demandRange');
     range.style.setProperty('--range-value', String(numeric / 3 * 100));
-    const preset = numeric === 0 ? 'Quiet' : numeric === 1 ? 'Typical' : numeric === 3 ? 'Heavy' : '';
+    const preset = ['', 'Typical', 'Busy', 'Heavy'][numeric] || (numeric === 0 ? 'Quiet' : '');
     setText('demandValue', `${preset ? `${preset} · ` : ''}${numeric.toFixed(1)}×`);
-    range.setAttribute('aria-valuetext', `${numeric.toFixed(1)} times typical traffic demand${preset ? `, ${preset}` : ''}`);
+    range.setAttribute('aria-valuetext', `Traffic demand level ${numeric.toFixed(1)}${preset ? `, ${preset}` : ''}`);
     document.querySelectorAll('[data-demand-preset]').forEach((button) => {
       const active = numeric === Number(button.dataset.demandPreset);
       button.classList.toggle('is-active', active);
@@ -195,11 +204,16 @@
       ? `${String(Math.floor(seconds / 3600)).padStart(2, '0')}:${clock(seconds % 3600)}`
       : snapshot.timeOfDay;
     for (const id of ['mapClock', 'demandClock']) {
-      setText(id, time);
+      setText(id, Number.isFinite(seconds) ? timeOfDayLabel(seconds) : time);
       const readout = $(id);
       if (readout.dateTime !== time) readout.dateTime = time;
     }
     setText('effectiveDemand', `${snapshot.metrics.effectiveDemand.toFixed(2)}×`);
+    if (snapshot.boundaryDemand?.length) {
+      const m = snapshot.metrics;
+      const rate = snapshot.boundaryDemand.reduce((sum, gate) => sum + gate.ratePerMinute, 0);
+      setText('boundaryDemandSummary', `About ${fmt(rate)} entry requests per simulated minute · ${fmt(m.boundaryQueued)} waiting to enter${m.boundaryDropped ? ` · ${fmt(m.boundaryDropped)} overflowed this run` : ''}.`);
+    }
   }
 
   function updateSurfaceWeatherButtons(road = currentRoad()) {
@@ -296,9 +310,19 @@
       || jobs.find((item) => item.streetId === selectedStreetId)
       || jobs.find((item) => item.state !== 'enroute') || jobs[0];
     const summary = $('roadworkSummary');
-    summary.hidden = !job;
-    if (!job) return;
-    summary.dataset.state = job.state;
+    summary.dataset.state = job?.state || 'idle';
+    $('roadworkStreet').disabled = !job;
+    $('roadworkTrack').disabled = !job;
+    if (!job) {
+      delete $('roadworkStreet').dataset.streetId;
+      delete $('roadworkTrack').dataset.vehicleId;
+      setText('roadworkStreet', 'Crane roadwork');
+      setText('roadworkTiming', 'No crane job active.');
+      $('roadworkProgress').hidden = true;
+      $('roadworkProgress').value = 0;
+      $('roadworkOther').hidden = true;
+      return;
+    }
     $('roadworkStreet').dataset.streetId = job.streetId;
     $('roadworkTrack').dataset.vehicleId = job.vehicleId;
     setText('roadworkStreet', `${job.streetId} roadwork`);
@@ -436,7 +460,7 @@
     const snapshot = engine.getSnapshot();
     if (result.ok) {
       $('demandStartTime').value = snapshot.demandProfileStartTime;
-      rememberScenarioAction(mode === 'daily' ? `Daily demand set to ${snapshot.timeOfDay}` : 'Steady demand resumed', snapshot.time);
+      rememberScenarioAction(mode === 'daily' ? `Daily demand set to ${timeOfDayLabel(snapshot.timeOfDaySeconds, false)}` : 'Steady demand resumed', snapshot.time);
     }
     refreshUi(snapshot);
     announce(result.message);
@@ -781,12 +805,31 @@
       if (vehicle.roadwork?.state === 'incomplete') timing = `Work window on ${vehicle.roadwork.streetId} ended`;
       if (vehicle.roadwork?.state === 'cancelled') timing = 'Work cancelled · site unavailable';
     }
+    if (vehicle.bus) {
+      if (active && vehicle.bus.stage === 'boarding') {
+        tripStatus = `Boarding at ${vehicle.bus.stopName}`;
+        timing = `${Math.ceil(vehicle.bus.remaining)}s until departure`;
+      } else if (active && vehicle.bus.stage === 'rejoining') {
+        tripStatus = 'Waiting for space to pull away';
+      } else if (active) timing = vehicle.bus.nextStopName
+        ? `Next stop: ${vehicle.bus.nextStopName} · ${vehicle.bus.nextStopStreetId}` : 'Heading to the route exit';
+      timing += `${timing ? ' · ' : ''}${vehicle.bus.onboard}/${vehicle.bus.capacity} aboard`;
+      if (vehicle.bus.stage === 'boarding') timing += ` · ${vehicle.bus.boardedHere} boarded, ${vehicle.bus.alightedHere} got off`;
+      else if (vehicle.bus.nextStopName) timing += ` · ${vehicle.bus.nextStopWaiting} waiting at next stop`;
+      timing += ` · ${Math.round(vehicle.bus.passengerSeconds)}s passenger stops`;
+    }
+    if (vehicle.school && active) {
+      tripStatus = vehicle.school.state === 'stopped' ? `${vehicle.school.phase === 'pickup' ? 'School pickup' : 'School drop-off'} at ${vehicle.school.name}`
+        : vehicle.school.state === 'approaching' ? `Heading to ${vehicle.school.name}` : `Leaving ${vehicle.school.name}`;
+      if (vehicle.school.state === 'stopped') timing = `${Math.ceil(vehicle.school.remaining)}s until departure · ${vehicle.school.children} students`;
+    }
     setText('vehicleStatus', incident ? `Broken down on ${incident.streetId}` : workStatus || tripStatus);
     setTrackerTiming(incident ? breakdownTiming(incident) : timing);
     $('vehicleRoadClosure').hidden = !currentRoad?.closed || Boolean(work);
     setText('vehicleRoadClosure', currentRoad?.workClosed ? 'Closed for roadwork' : 'Current street closed');
-    setText('inspectorVehicleType', vehicle.type === 'crane' ? 'Mobile crane' : vehicle.type === 'bike' ? 'Motorbike' : 'Car');
-    setText('trackerDetailLabel', 'Total wait');
+    setText('inspectorVehicleType', vehicle.type === 'bus' ? `City bus · ${vehicle.bus?.serviceName || 'City service'}`
+      : vehicle.type === 'crane' ? 'Mobile crane' : vehicle.type === 'bike' ? 'Motorbike' : 'Car');
+    setText('trackerDetailLabel', vehicle.type === 'bus' ? 'Traffic wait' : 'Total wait');
     setText('vehicleWait', `${Math.round(vehicle.waitTime || 0)}s`);
     updateVehicleRoute(vehicle, active ? active.routeIndex : null, roads);
   }
@@ -808,7 +851,7 @@
     const roadChanges = conditions.filter(([roads]) => roads.length).map(([roads, single, multiple]) =>
       roads.length === 1 ? `${roads[0].id} ${single}` : `${fmt(roads.length)} ${multiple}`);
     const demand = snapshot.demandProfileMode === 'daily'
-      ? `Daily ${snapshot.timeOfDay} · ${snapshot.metrics.effectiveDemand.toFixed(2)}× demand`
+      ? `Daily ${timeOfDayLabel(snapshot.timeOfDaySeconds, false)} · ${snapshot.metrics.effectiveDemand.toFixed(2)}× typical arrivals`
       : `${snapshot.demand.toFixed(1)}× demand`;
     setText('scenarioSettings', `${demand} · ${controller}`);
     setText('scenarioRoads', roadChanges.join(' · ') || 'No road changes');
@@ -833,7 +876,10 @@
     const waitWindow = waitSampleCount === waitSampleLimit
       ? `Latest ${waitSampleLimit} completed trips`
       : `${waitSampleCount}/${waitSampleLimit} completed trips`;
-    setText('avgWaitContext', hasDisplayAverage ? waitWindow : metrics.active ? 'No completed trips yet' : 'No active traffic');
+    const includesWarmup = metrics.completed < waitSampleCount;
+    setText('avgWaitContext', hasDisplayAverage
+      ? `${waitWindow}${includesWarmup ? ' · includes warmup' : ''}`
+      : metrics.active ? 'No completed trips yet' : 'No active traffic');
     setText('avgWaitAge', hasDisplayAverage ? `Last trip ${lastCompletionAge}` : '');
     updateScenario(snap);
     setText('simTime', clock(snap.time));
@@ -949,11 +995,78 @@
     });
   }
 
+  function showComparison(report) {
+    const container = $('comparisonResults');
+    container.replaceChildren();
+    const labels = new Map(report.controllers.map(controller => [controller.id, controller.label]));
+    const number = (value, suffix = '') => Number.isFinite(value) ? `${value.toFixed(1)}${suffix}` : '—';
+    for (const scenario of report.scenarios) {
+      const title = document.createElement('h4');
+      title.textContent = `${scenario.label} · ${scenario.demand.toFixed(1)}× demand`;
+      const table = document.createElement('table');
+      const head = document.createElement('thead');
+      const headings = document.createElement('tr');
+      for (const label of ['Strategy', 'Avg. queued', 'Trips completed', 'Completed trip wait', 'Unfinished wait total', 'Waiting to enter', 'Avg. pedestrians waiting', 'Runs']) {
+        const th = document.createElement('th'); th.scope = 'col'; th.textContent = label; headings.appendChild(th);
+      }
+      head.appendChild(headings); table.appendChild(head);
+      const body = document.createElement('tbody');
+      for (const summary of report.summaries.filter(item => item.scenarioId === scenario.id)) {
+        const row = document.createElement('tr');
+        const metrics = summary.metrics || {};
+        for (const value of [labels.get(summary.controllerId) || summary.controllerId, number(metrics.averageQueue), number(metrics.completedTrips), number(metrics.completedTripWaitSeconds, ' s'), number(metrics.unfinishedWaitSeconds, ' s'), number(metrics.boundaryQueued), number(metrics.averagePedestrianQueue), `${summary.successfulSeeds}/${summary.totalSeeds}`]) {
+          const td = document.createElement('td'); td.textContent = value; row.appendChild(td);
+        }
+        body.appendChild(row);
+      }
+      table.appendChild(body); container.append(title, table);
+    }
+    const explanation = document.createElement('p');
+    explanation.className = 'weather-help';
+    explanation.textContent = `Values are averages across ${report.seeds.length} seeds over ${Math.round(report.durationSeconds / 60)} simulated minutes per run. Completed-trip wait excludes unfinished journeys; vehicles waiting outside the network are listed separately. Arrival requests match for the same scenario and seed; later incidents may differ.`;
+    container.appendChild(explanation);
+    container.hidden = false;
+  }
+
+  on('compareStrategies', 'click', async () => {
+    const button = $('compareStrategies');
+    if (!window.TrafficEvaluation) {
+      setText('comparisonStatus', 'Comparison could not load. Refresh the page and try again.');
+      return;
+    }
+    button.disabled = true;
+    comparisonRunning = true;
+    $('comparisonResults').hidden = true;
+    comparisonReport = null;
+    try {
+      const evaluation = window.TrafficEvaluation;
+      const current = evaluation.scenarioFromSnapshot(engine.getSnapshot(), { id: 'current', label: 'Current settings' });
+      const alternateDemand = current.demand > 0 && current.demand < 3 ? Math.min(3, current.demand * 1.5) : 1;
+      const second = { ...current, id: 'alternate', label: current.demand > 0 && current.demand < 3 ? 'Busier demand' : 'Typical demand', demand: alternateDemand };
+      setText('comparisonStatus', 'Preparing comparison…');
+      const report = await evaluation.run(data, {
+        scenarios: [current, second],
+        externalModel: registeredModel,
+        onProgress: progress => setText('comparisonStatus', `Running comparison: ${progress.completedRuns} of ${progress.totalRuns} runs complete.`)
+      });
+      comparisonReport = report;
+      showComparison(report);
+      const failures = report.results.filter(result => result.status !== 'complete').length;
+      setText('comparisonStatus', failures ? `Comparison complete with ${failures} failed run${failures === 1 ? '' : 's'}; see the exported data for details.` : `Comparison complete.${report.externalModelIncluded ? ' Connected model included.' : ' No trained model was connected.'}`);
+    } catch (error) {
+      setText('comparisonStatus', `Comparison failed: ${error.message || error}`);
+    } finally {
+      comparisonRunning = false;
+      button.disabled = false;
+    }
+  });
+
   on('exportButton', 'click', () => {
     const payload = {
       ...engine.exportRun(),
       mlDataset: mlControl.exportDataset(),
-      mlEpisodeSummary: mlControl.getSummary()
+      mlEpisodeSummary: mlControl.getSummary(),
+      strategyComparison: comparisonReport
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -966,6 +1079,8 @@
   window.signalStudio.connectController = (fn) => {
     const result = mlControl.registerExternalModel(fn);
     if (result?.ok === false) return announce(result.message);
+    registeredModel = typeof fn === 'function' ? fn : null;
+    if (!comparisonRunning) setText('comparisonStatus', registeredModel ? 'Ready to compare, including the connected model.' : 'Ready to compare the three rules-based strategies.');
     if (typeof fn === 'function') {
       mlControl.setPolicy('external');
       engine.setMode('custom');

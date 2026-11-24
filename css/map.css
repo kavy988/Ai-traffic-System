@@ -25,12 +25,12 @@ body[data-theme="dark"] #mapFrame { background: #1f2427; }
   --map-ground: #f5f5f5;
   --map-block-fill: #f9f9f8;
   --map-block-stroke: #edf0f1;
-  --map-park-fill: #f6f7f7;
-  --map-park-stroke: #edf0f1;
+  --map-park-fill: #e5ebdc;
+  --map-park-stroke: #d4decd;
   --map-water-fill: #edf0f2;
   --map-water-stroke: #e2e7e9;
-  --map-tree-fill: #c5cdd0;
-  --map-tree-core: #a6b1b6;
+  --map-tree-fill: #b1c4a7;
+  --map-tree-core: #8eab82;
   --map-road-edge: #bbc7ce;
   --map-road-surface: #ced9e0;
   --map-road-center: #98aab3;
@@ -60,8 +60,8 @@ body[data-theme="dark"] #mapFrame { background: #1f2427; }
   --map-park-stroke: #323a3e;
   --map-water-fill: #252c30;
   --map-water-stroke: #394246;
-  --map-tree-fill: #515c61;
-  --map-tree-core: #6a757a;
+  --map-tree-fill: #425741;
+  --map-tree-core: #64845a;
   --map-road-edge: #4d585f;
   --map-road-surface: #3b464d;
   --map-road-center: #84939a;
@@ -91,15 +91,53 @@ body[data-theme="dark"] #mapFrame { background: #1f2427; }
   stroke-linejoin: round;
 }
 .map-block-shape { fill: var(--map-block-fill); stroke: var(--map-block-stroke); }
+.map-building { --roof: #ded0b8; --roof-detail: #b3a389; pointer-events: none; }
+.map-building.tone-sage { --roof: #c7d5c9; --roof-detail: #9fb5a4; }
+.map-building.tone-slate { --roof: #c3d1d9; --roof-detail: #91a9b7; }
+.map-building-shadow { fill: #64736d; opacity: .18; }
+.map-building-wall { fill: #f9f9f3; stroke: #b8c2b9; stroke-width: 1; }
+.map-building-roof { fill: var(--roof); stroke: var(--roof-detail); stroke-width: 1.1; }
+.map-building-roof-inset { fill: none; stroke: #f6f7ef; stroke-width: 1.4; opacity: .85; }
+.map-building-ridge { fill: none; stroke: var(--roof-detail); stroke-width: 1.2; }
+.map-building-chimney { fill: #a5b0aa; stroke: #f1f2ec; stroke-width: 1; }
+.map-building-skylight { fill: #86a6ad; stroke: #e7f0ed; stroke-width: .8; }
+.map-building-entrance { fill: #e6dfd1; stroke: #b8b5a7; stroke-width: .8; }
+.map-shop-awning { fill: #7d9c91; stroke: #f6f5e9; stroke-width: 1; }
+.map-place-lawn { fill: #e4ebda; stroke: #c9d6c0; stroke-width: 1.2; }
+.is-school .map-place-lawn { fill: #edf0e5; }
+.map-place-footpath { fill: none; stroke: #ddd6c5; stroke-width: 5; stroke-linecap: round; }
+.map-school-court { fill: #c9d8b5; stroke: #a9bd93; stroke-width: 1; }
+.map-school-court-lines { fill: none; stroke: #f8f9e9; stroke-width: 1.3; }
+.map-park-bench { fill: none; stroke: #a79570; stroke-width: 2; stroke-linecap: round; }
+.map-district-name { fill: #61766a; stroke: var(--map-ground); stroke-width: 4; stroke-linejoin: round; paint-order: stroke; font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 650; letter-spacing: .2px; pointer-events: none; }
+.map-bus-stop-curb { fill: none; stroke: #bd9a50; stroke-width: 2.2; }
+.map-bus-shelter { fill: #c4d8de; stroke: #7d9da7; stroke-width: 1; }
+.map-bus-stop-bench { stroke: #6b8d8c; stroke-width: 1.6; stroke-linecap: round; }
+.map-bus-stop-sign { fill: #286a8d; stroke: #f4f7f5; stroke-width: .8; }
+.map-bus-stop-letter { fill: #fff; font: 8px ui-sans-serif, system-ui, sans-serif; font-weight: 750; }
+.map-transit-people, .map-school-activity { pointer-events: none; }
+.map-stop-overflow { fill: var(--map-label-ink); stroke: var(--map-ground); stroke-width: 3; paint-order: stroke; font: 14px ui-sans-serif, system-ui, sans-serif; font-weight: 700; }
+.map-school-badge rect { fill: #fbf5e8; stroke: #b89554; stroke-width: .8; }
+.map-school-badge text { fill: #785a28; font: 12px ui-sans-serif, system-ui, sans-serif; font-weight: 650; }
+.map-school-badge[data-phase="closed"] rect { fill: var(--map-label-fill); stroke: var(--map-label-stroke); }
+.map-school-badge[data-phase="closed"] text { fill: var(--map-label-ink); }
+#cityMap[data-theme="dark"] .map-school-badge:not([data-phase="closed"]) rect { fill: #453925; stroke: #af8b4e; }
+#cityMap[data-theme="dark"] .map-school-badge:not([data-phase="closed"]) text { fill: #eed6a2; }
+#cityMap[data-theme="dark"] .map-building { --roof: #675f4c; --roof-detail: #8d8269; }
+#cityMap[data-theme="dark"] .map-building.tone-sage { --roof: #465c4c; --roof-detail: #738b79; }
+#cityMap[data-theme="dark"] .map-building.tone-slate { --roof: #435966; --roof-detail: #718c9d; }
+#cityMap[data-theme="dark"] .map-building-wall { fill: #849084; stroke: #68796d; }
+#cityMap[data-theme="dark"] .map-building-roof-inset { stroke: #94a294; opacity: .5; }
+#cityMap[data-theme="dark"] .map-place-lawn { fill: #303e2c; stroke: #465840; }
+#cityMap[data-theme="dark"] .map-place-footpath { stroke: #686555; }
+#cityMap[data-theme="dark"] .map-school-court { fill: #455a37; stroke: #5f7750; }
+#cityMap[data-theme="dark"] .map-district-name { fill: #9fb7a7; }
 .map-park-shape { fill: var(--map-park-fill); stroke: var(--map-park-stroke); }
 .map-water-shape { fill: var(--map-water-fill); stroke: var(--map-water-stroke); }
 .map-tree-symbol { filter: url(#mapTreeShadow); }
 .map-tree-crown { fill: var(--map-tree-fill); stroke: var(--map-park-stroke); stroke-width: 1; }
 .map-tree-core { fill: var(--map-tree-core); opacity: .84; }
 
-.map-clouds { pointer-events: none; }
-.map-cloud-image { opacity: .17; pointer-events: none; }
-#cityMap[data-theme="dark"] .map-cloud-image { opacity: .09; }
 
 .map-road-selection,
 .map-road-casing,
@@ -212,6 +250,19 @@ body[data-theme="dark"] #mapFrame { background: #1f2427; }
 .map-breakdown-lights { fill: none; stroke: #fff2c5; stroke-width: 1.6; stroke-linecap: round; }
 .map-breakdown-diamond { fill: #f2b74c; stroke: #604017; stroke-width: 1.25; }
 .map-breakdown-exclamation { fill: none; stroke: #36250f; stroke-width: 1.45; stroke-linecap: round; }
+.map-breakdown-timer { pointer-events: none; outline: none; }
+.map-breakdown-timer-link { stroke: #a26a38; stroke-width: 1.4; stroke-dasharray: 2 2; opacity: .76; }
+#cityMap[data-theme="dark"] .map-breakdown-timer-link { stroke: #e3ac68; }
+.map-breakdown-timer-plate { fill: #51382e; stroke: #e6ba79; stroke-width: 1.25; }
+.map-breakdown-timer:hover .map-breakdown-timer-plate,
+.map-breakdown-timer:focus-visible .map-breakdown-timer-plate { stroke: #fff0ba; stroke-width: 2; }
+.map-breakdown-timer-label {
+  fill: #fff4da;
+  font: 740 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-variant-numeric: tabular-nums;
+  dominant-baseline: central;
+}
+.map-breakdown-timer-hit { fill: transparent; pointer-events: all; cursor: pointer; }
 .key-breakdown { width: 8px; height: 8px; margin-inline: 1px; background: #f2b74c; border: 1px solid #604017; border-radius: 1px; transform: rotate(45deg); }
 
 .map-road-hit-layer { pointer-events: auto; }
@@ -358,34 +409,55 @@ body[data-theme="dark"] #mapFrame { background: #1f2427; }
 .map-vehicle-marker { cursor: pointer; outline: none; }
 .map-vehicle-hitarea { fill: transparent; pointer-events: all; }
 .map-car-shadow { fill: #17211b; opacity: .2; }
-.map-car-body { fill: var(--map-car-tone, #42947c); stroke: var(--map-car-border, #30463d); stroke-width: var(--map-car-border-width, 1.15); }
+.map-car-body { fill: var(--map-broken-car-fill, var(--map-car-tone, #42947c)); stroke: var(--map-car-border, #30463d); stroke-width: var(--map-car-border-width, 1.15); }
 .map-car-tire { fill: #303834; }
 .map-car-window { fill: #e5f0ea; stroke: #52685d; stroke-width: .65; }
 .map-car-light { fill: #fff4c7; }
 .map-car-brake { fill: var(--map-brake-color, #926352); }
+.map-bus-body { fill: #28759c; stroke: var(--map-car-border, #194b65); stroke-width: var(--map-car-border-width, 1.1); }
+.map-bus-roof { fill: #e6eff0; stroke: #b3c9d0; stroke-width: .7; }
+.map-bus-window, .map-bus-windscreen { fill: #183b4c; stroke: #83b6c8; stroke-width: .35; }
+.map-bus-roof-vent { fill: #a2bdc5; stroke: #7799a5; stroke-width: .6; }
+.map-bus-headlights { fill: none; stroke: #ffefbb; stroke-width: 1.5; stroke-linecap: round; }
+.map-bus-tail-lights { fill: none; stroke: var(--map-brake-color, #d87f68); stroke-width: 1.5; stroke-linecap: round; }
+.map-bus-door { stroke: #f3d88c; stroke-width: 1.2; }
 .map-motorbike-tire { fill: #28343a; stroke: #172327; stroke-width: .6; }
-.map-motorbike-hub { fill: #acb4b0; }
 .map-motorbike-body { fill: #53877b; stroke: var(--map-car-border, #324c48); stroke-width: .75; stroke-linejoin: round; }
+.map-motorbike-seat { fill: #273d3a; }
 .map-motorbike-chrome,
 .map-motorbike-lights,
+.map-motorbike-tail-light,
 .map-motorbike-trousers,
 .map-motorbike-arm { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .map-motorbike-chrome { stroke: #b6bfba; stroke-width: .9; }
 .map-motorbike-lights { stroke: #f8df9a; stroke-width: .95; }
+.map-motorbike-tail-light { stroke: var(--map-brake-color, #b66f59); stroke-width: 1; }
 .map-motorbike-trousers { stroke: #354554; stroke-width: 1.35; }
 .map-motorbike-rider { fill: #4a6476; stroke: #2f3f49; stroke-width: .65; }
 .map-motorbike-arm { stroke: #4a6476; stroke-width: 1.1; }
 .map-motorbike-helmet { fill: #ebd399; stroke: #635039; stroke-width: .58; }
 .map-motorbike-visor { fill: #435654; }
-.map-crane-chassis { fill: #ce9951; stroke: var(--map-car-border, #503b2c); stroke-width: var(--map-car-border-width, 1.05); }
-.map-crane-deck { fill: #586368; stroke: #584632; stroke-width: .55; }
-.map-crane-cab { fill: #e9b561; stroke: #715031; stroke-width: .63; }
-.map-crane-windshield { fill: #4e6873; stroke: #354b56; stroke-width: .42; }
-.map-crane-counterweight { fill: #e3ab55; stroke: #745232; stroke-width: .65; }
-.map-crane-pivot { fill: #757783; stroke: #4d473f; stroke-width: .65; }
-.map-crane-boom { fill: #e9ac4c; stroke: #684728; stroke-width: .75; stroke-linejoin: round; }
-.map-crane-boom-detail { fill: none; stroke: #ffe7a5; stroke-width: .7; stroke-linecap: round; }
-.map-crane-hook { fill: none; stroke: #614935; stroke-width: .85; stroke-linecap: round; stroke-linejoin: round; }
+.map-crane-chassis { fill: #d5a13c; stroke: var(--map-car-border, #45392c); stroke-width: var(--map-car-border-width, 1.02); }
+.map-crane-cab { fill: #f8bd42; stroke: #5a4425; stroke-width: .85; }
+.map-crane-windshield { fill: #324d56; stroke: #27393e; stroke-width: .45; }
+.map-crane-headlights { fill: none; stroke: #fff2ca; stroke-width: .85; stroke-linecap: round; }
+.map-crane-counterweight { fill: #e9a82e; stroke: #544027; stroke-width: .89; }
+.map-crane-counterweight-stripes { fill: none; stroke: #635030; stroke-width: .9; stroke-linecap: round; }
+.map-crane-pivot { fill: #39484d; stroke: #eac05e; stroke-width: .95; }
+.map-crane-boom { fill: #edaa27; stroke: #503924; stroke-width: 1.12; stroke-linejoin: round; }
+.map-crane-boom-sleeve { fill: #ffc54a; stroke: #795324; stroke-width: .5; }
+.map-crane-boom-tip { fill: #ffda68; stroke: #77502b; stroke-width: .44; }
+.map-crane-boom-detail { fill: none; stroke: #ffe9a7; stroke-width: .9; stroke-linecap: round; }
+.map-crane-boom-pin { fill: #4d4f42; stroke: #ffe2a0; stroke-width: .65; }
+.map-crane-hook {
+  fill: none;
+  stroke: #342d2a;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  filter: drop-shadow(.35px 0 #ffe29b);
+}
+.map-crane-outrigger { fill: none; stroke: #dfab45; stroke-width: 2.25; stroke-linecap: round; }
+.map-crane-outrigger-pad { fill: #515252; stroke: #f0bd58; stroke-width: .72; }
 .map-crane-folded { display: var(--map-crane-folded-display, inline); }
 .map-crane-raised { display: var(--map-crane-raised-display, none); }
 .map-vehicle-marker.is-working {
@@ -393,6 +465,7 @@ body[data-theme="dark"] #mapFrame { background: #1f2427; }
   --map-crane-raised-display: inline;
 }
 .map-vehicle-marker.is-queued { --map-brake-color: #d63e2c; }
+.map-vehicle-marker.is-broken-down { --map-broken-car-fill: #f2b74c; --map-brake-color: #ba473b; }
 .map-vehicle-selection-ring { fill: var(--map-accent); fill-opacity: .12; stroke: var(--map-accent); stroke-width: 1.8; opacity: 0; pointer-events: none; }
 .map-vehicle-marker:hover .map-vehicle-selection-ring,
 .map-vehicle-marker:focus-visible .map-vehicle-selection-ring { opacity: .72; }

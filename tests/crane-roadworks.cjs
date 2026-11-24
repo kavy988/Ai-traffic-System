@@ -1,9 +1,9 @@
 const assert = require('node:assert/strict');
 
 globalThis.window = globalThis;
-require('../map-data.js');
-require('../signal-layout.js');
-require('../simulation.js');
+require('../js/map-data.js');
+require('../js/signal-layout.js');
+require('../js/simulation.js');
 
 const speed = 8;
 const simStep = speed / 32;
@@ -48,23 +48,26 @@ function run(withRoadwork) {
     for (const job of snapshot.roadworks) {
       const crane = snapshot.vehicles.find((vehicle) => vehicle.id === job.vehicleId);
       assert.equal(crane?.type, 'crane');
-      assert.ok(crane.route.length <= 2 && crane.route.some((leg) => leg.streetId === job.streetId));
+      const workIndex = crane.route.findIndex((leg) => leg.streetId === job.streetId && leg.reverse === job.reverse);
+      assert.ok(workIndex >= 0 && workIndex <= 1, 'The work site is within the first two streets');
       assert.ok(job.progress >= 0 && job.progress <= 1);
       if (job.state === 'enroute') continue;
       assert.ok(closed.has(job.streetId));
       if (job.state !== 'working') continue;
-      assert.ok(job.duration > 0 && job.duration <= 60 && job.remaining >= 0 && job.remaining <= job.duration);
+      assert.ok(job.duration > 0 && job.duration <= 30 && job.remaining >= 0 && job.remaining <= job.duration);
       assert.ok(!carsAndBikes.some((vehicle) => vehicle.streetId === job.streetId), `Work started before ${job.streetId} cleared`);
       const previous = jobs.get(job.id);
       assert.ok(!previous || job.progress >= previous.progress);
-      jobs.set(job.id, { street: job.streetId, plannedWorkSeconds: job.duration, progress: job.progress, finished: false });
+      jobs.set(job.id, { street: job.streetId, plannedWorkSeconds: job.duration, progress: job.progress, state: 'working', exited: false });
     }
 
-    for (const crane of snapshot.completed.filter((vehicle) => vehicle.type === 'crane')) {
-      if (crane.roadwork?.state !== 'finished') continue;
-      const completed = jobs.get(crane.roadwork.id);
-      assert.ok(completed, 'Completed crane was observed working');
-      completed.finished = true;
+    for (const crane of [...snapshot.vehicles, ...snapshot.completed].filter((vehicle) => vehicle.type === 'crane')) {
+      if (!['finished', 'incomplete'].includes(crane.roadwork?.state)) continue;
+      const job = jobs.get(crane.roadwork.id);
+      assert.ok(job, 'Crane was observed working');
+      job.state = crane.roadwork.state;
+      job.exited ||= snapshot.completed.some((vehicle) => vehicle.id === crane.id);
+      assert.ok(crane.roadwork.elapsed <= 30, 'Crane work ran past its time limit');
     }
   }
 
@@ -73,17 +76,17 @@ function run(withRoadwork) {
   assert.equal(end.speed, speed);
   assert.equal(end.roadworks.length, 0);
   assert.ok(!end.roads.some((road) => road.workClosed));
-  const completedJobs = [...jobs.values()].filter((job) => job.finished);
+  const completedJobs = [...jobs.values()].filter((job) => job.state === 'finished' || job.state === 'incomplete');
   if (withRoadwork) {
     assert.equal(completedJobs.length, dispatches.size);
     assert.ok(detours.size > 0, 'At least one journey detoured around roadwork');
   }
   return {
-    completedTrips: end.metrics.completed - completedJobs.length,
+    completedTrips: end.metrics.completed - completedJobs.filter((job) => job.exited).length,
     averageQueue: Number((totalQueue / duration).toFixed(2)),
     peakQueue,
     detouredVehicles: detours.size,
-    completedJobs: completedJobs.map(({ street, plannedWorkSeconds }) => ({ street, plannedWorkSeconds }))
+    completedJobs: completedJobs.map(({ street, plannedWorkSeconds, state, exited }) => ({ street, plannedWorkSeconds, state, exited }))
   };
 }
 

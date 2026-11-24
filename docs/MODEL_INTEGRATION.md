@@ -55,10 +55,10 @@ Episodes begin on page load and after Reset. The export identifies controller ch
 
 ## Comparing controllers fairly
 
-For each comparison, reset to the same seed, then keep demand, road closures, breakdowns, bike-only restrictions, road surfaces, and simulated duration the same. Export each run separately. Compare the completed-trip rolling wait with its sample count, all-run completed wait, completed journeys, current queue, active vehicles, throughput, and total arrivals. The queue and active-trip wait expose unfinished delay that a completed-trip mean can omit.
+In **Insights → Run comparison**, fixed timing, adaptive rules, and queue-aware rules each run for five simulated minutes at two demand levels over the same three seeds. A connected model receives the same observation contract. Use a synchronous, deterministic callback for comparison. **Export run data** saves each run and its aggregate metrics under `strategyComparison`.
 
-Reset reproduces the seeded opening state. It does not guarantee a perfectly paired stream of arrivals across different controllers: changes to routing and simulation events can consume the simulator's random stream differently. The page does not run a multi-controller batch comparison or claim statistical significance. Use repeated seeds and report this limitation when evaluating results.
+Each strategy starts from the same adaptive warm-up for its seed. The comparison reapplies manual road settings and checks that each entry point offers the same trips across strategies. Traffic may enter later, take a different route, or encounter different randomly triggered incidents. Compare throughput and pedestrian queues alongside completed-trip wait, unfinished wait, and entry queues. Averages over three seeds provide a first benchmark.
 
 ## Current limits
 
-This environment has no real traffic feeds, learned parameters, Python service, or model training pipeline. The network caps at 180 active vehicles; at capacity, new arrivals pause at the boundary and are not represented as an upstream queue. The export is a browser-generated trajectory dataset with documented approximations and transition timing; it needs inspection and validation before use for training. It is a portfolio-scale synthetic simulator, not evidence of real-world signal performance.
+The export is synthetic and needs validation before training. Every entry point keeps a bounded queue of requests outside the network. The engine reports offered, admitted, queued, and overflowed requests separately from its maximum of 200 active vehicles. The experiment results measure this simulator. Testing a learned policy's transfer requires a separate map or traffic benchmark.

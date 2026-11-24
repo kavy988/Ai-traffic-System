@@ -131,7 +131,7 @@ h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 34px;
 .vehicle-search > svg, .input-with-icon svg { flex: 0 0 auto; width: 16px; height: 16px; margin-left: 11px; fill: none; stroke: var(--muted); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .vehicle-search input { width: 100%; min-width: 0; height: 100%; padding: 0 10px; border: 0; outline: 0; color: var(--ink); background: transparent; font-size: 16px; }
 .vehicle-search input::placeholder, .input-with-icon input::placeholder { color: var(--muted-2); opacity: 1; }
-.search-results { position: absolute; z-index: 50; left: -1px; right: -1px; top: calc(100% + 5px); padding: 5px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); box-shadow: 0 10px 28px rgba(15, 25, 18, .15); }
+.search-results { position: absolute; z-index: 50; left: -1px; right: -1px; top: calc(100% + 5px); max-height: 240px; overflow-y: auto; padding: 5px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface); box-shadow: 0 10px 28px rgba(15, 25, 18, .15); }
 .search-result { width: 100%; min-height: 44px; border: 0; border-radius: 3px; padding: 8px 10px; text-align: left; background: transparent; color: var(--ink); font-size: 16px; }
 .search-result:hover, .search-result:focus { outline: 0; background: var(--green-wash); }
 .search-result strong { display: block; font-size: 16px; font-weight: 650; }
@@ -168,6 +168,8 @@ h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 34px;
 .map-key { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 14px; }
 .key-road { width: 13px; height: 5px; border-top: 2px solid #a5aaa4; border-bottom: 1px solid #d2d4ce; }
 .key-car { width: 8px; height: 7px; border-radius: 2px; background: #557a69; }
+.key-bus { width: 16px; height: 7px; border: 1px solid #194b65; border-radius: 2px; background: #28759c; box-shadow: inset 0 2px #e6eff0; }
+.key-crane { width: 19px; height: 14px; fill: #edaa27; stroke: #a87c29; stroke-width: 1; stroke-linejoin: round; }
 .key-signal { display: flex; align-items: center; gap: 2px; width: 19px; height: 9px; padding: 0 2px; border-radius: 6px; background: #e5e6e0; }
 .key-signal b { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
 .map-selection-status { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 14px; }
@@ -288,6 +290,18 @@ h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 34px;
 .scenario-panel { padding: 23px 24px; }
 .road-panel { min-width: 0; padding: 19px; }
 .road-panel .panel-heading { margin-bottom: 15px; }
+.map-workspace { align-items: start; }
+#street-conditions.road-panel { display: flex; flex-direction: column; height: clamp(520px, calc(100dvh - 96px), 740px); overflow: hidden; }
+.road-panel > .panel-heading { flex: 0 0 auto; }
+.road-panel-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; padding-right: 8px; scrollbar-gutter: stable; }
+.road-panel-scroll:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.road-panel-scroll, .vehicle-inspector, .event-list, .comparison-results, .weather-road-chips { scrollbar-width: thin; scrollbar-color: var(--muted-2) var(--surface-soft); }
+@supports selector(::-webkit-scrollbar) {
+  .road-panel-scroll { scrollbar-width: auto; scrollbar-color: auto; }
+  .road-panel-scroll::-webkit-scrollbar { width: 8px; }
+  .road-panel-scroll::-webkit-scrollbar-track { border-radius: 8px; background: var(--surface-soft); }
+  .road-panel-scroll::-webkit-scrollbar-thumb { border: 2px solid var(--surface-soft); border-radius: 8px; background: var(--muted-2); }
+}
 .panel-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
 .panel-icon { display: grid; flex: 0 0 38px; place-items: center; width: 38px; height: 38px; border-radius: 50%; }
 .panel-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.55; stroke-linecap: round; stroke-linejoin: round; }
@@ -324,7 +338,12 @@ h3 { margin-bottom: 0; font-size: 19px; line-height: 1.3; font-weight: 620; lett
 .feedback-line { display: block; padding-top: 5px; color: var(--green-dark); font-size: 14px; overflow-wrap: anywhere; }
 .feedback-line:empty { padding: 0; }
 .feedback-line[data-kind="warning"] { color: var(--amber); }
-.roadwork-summary { display: grid; gap: 4px; margin: 8px 0 14px; padding: 3px 10px 10px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface-soft); }
+.roadwork-summary { display: grid; grid-template-rows: 28px 40px 8px 18px; flex: 0 0 auto; gap: 3px; margin: 12px 0 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--surface-soft); }
+.roadwork-heading { grid-row: 1; }
+#roadworkTiming { grid-row: 2; overflow-y: auto; }
+#roadworkProgress { grid-row: 3; }
+#roadworkOther { grid-row: 4; }
+.roadwork-heading button:disabled { color: var(--muted); cursor: default; }
 .roadwork-summary[data-state="clearing"], .roadwork-summary[data-state="working"] { border-inline-start: 3px solid var(--amber); }
 .roadwork-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 10px; }
 .roadwork-heading .text-button { padding: 2px 0; font-size: 14px; }
@@ -388,6 +407,7 @@ h3 { margin-bottom: 0; font-size: 19px; line-height: 1.3; font-weight: 620; lett
 .demand-preset.is-active { color: var(--green-dark); }
 .demand-preset.is-active { font-weight: 650; }
 .demand-preset:focus-visible { outline: 2px solid var(--green); outline-offset: 4px; border-radius: 3px; }
+.demand-boundary-summary { margin: 8px 0 0; }
 .demand-profile-toggle { margin-top: 14px; }
 .demand-profile-panel { margin-top: 8px; padding: 12px; border: 1px solid var(--line-soft); border-radius: var(--control-radius); background: var(--surface-soft); }
 .demand-profile-readings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
@@ -405,6 +425,19 @@ h3 { margin-bottom: 0; font-size: 19px; line-height: 1.3; font-weight: 620; lett
 .insights-section .section-heading { margin-bottom: 22px; }
 .export-button { min-height: 44px; }
 .insights-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(190px, .7fr); gap: 16px; }
+.comparison-panel { margin-top: 16px; padding: 22px; border: 1px solid var(--line); border-radius: var(--card-radius); background: var(--surface); box-shadow: var(--shadow); }
+.comparison-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.comparison-heading h3 { margin: 0; font-size: 20px; }
+.comparison-heading button { flex: 0 0 auto; }
+.comparison-panel > .weather-help { margin: 10px 0 0; }
+.comparison-status { margin: 14px 0 0; color: var(--green-dark); font-size: 15px; }
+.comparison-results { margin-top: 18px; max-height: 360px; overflow: auto; scrollbar-gutter: stable; }
+.comparison-results h4 { margin: 18px 0 7px; font-size: 16px; }
+.comparison-results table { width: 100%; border-collapse: collapse; text-align: left; font-size: 15px; font-variant-numeric: tabular-nums; }
+.comparison-results th, .comparison-results td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+.comparison-results th { color: var(--muted); font-size: 13px; font-weight: 600; }
+.comparison-results td:first-child { font-weight: 650; }
+@media (max-width: 620px) { .comparison-heading { align-items: flex-start; flex-direction: column; } .comparison-panel { padding: 18px 15px; } .comparison-results table { min-width: 560px; } }
 .chart-panel { grid-row: span 2; padding: 21px 22px 14px; }
 .chart-panel-heading, .event-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
 .chart-panel-heading h3, .event-heading h3 { font-size: 18px; }
@@ -435,7 +468,7 @@ h3 { margin-bottom: 0; font-size: 19px; line-height: 1.3; font-weight: 620; lett
 .event-panel { min-height: 168px; padding: 18px 20px; }
 .event-live { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 4px 9px; border: 1px solid #d6e5da; border-radius: 99px; color: var(--green-dark); font-size: 14px; font-weight: 750; letter-spacing: .05em; }
 .event-live i { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
-.event-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.event-list { list-style: none; max-height: 240px; overflow-y: auto; scrollbar-gutter: stable; margin: 12px 0 0; padding: 0 8px 0 0; }
 .event-list li { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line-soft); color: var(--ink-soft); font-size: 14px; line-height: 1.45; }
 .event-list li:first-child { border-top: 0; }
 .event-time { min-width: 48px; color: var(--muted-2); font-size: 14px; font-variant-numeric: tabular-nums; }
@@ -536,10 +569,16 @@ body[data-run-state="paused"] .live-pill { border-color: var(--line); background
 
 @media (width > 900px) {
   .map-stage, .map-stage .map-shell, .map-workspace .road-panel { display: flex; flex-direction: column; }
-  .map-stage .map-shell, .map-stage .map-frame { flex: 1 0 auto; }
+  .map-stage .map-shell, .map-stage .map-frame { flex: 0 0 auto; }
   .map-workspace .road-panel .feedback-line#roadFeedback { margin-bottom: 15px; }
-  .map-workspace .road-panel .panel-subsection { margin-top: auto; }
+  .map-workspace .road-panel .panel-subsection { margin-top: 15px; }
   .vehicle-inspector { min-height: 144px; }
+}
+
+.vehicle-inspector { max-height: 320px; overflow-y: auto; scrollbar-gutter: stable; }
+.weather-road-chips { max-height: 200px; overflow-y: auto; scrollbar-gutter: stable; }
+@media (max-width: 900px) {
+  #street-conditions.road-panel { height: clamp(460px, 72dvh, 620px); }
 }
 
 @media (max-width: 640px), (901px <= width <= 1080px) {

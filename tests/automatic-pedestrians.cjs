@@ -1,9 +1,9 @@
 const assert = require('node:assert/strict');
 
 globalThis.window = globalThis;
-require('../map-data.js');
-require('../signal-layout.js');
-require('../simulation.js');
+require('../js/map-data.js');
+require('../js/signal-layout.js');
+require('../js/simulation.js');
 
 const data = globalThis.MAP_PREVIEW_DATA;
 const create = (seed, autoPedestrians) => globalThis.TrafficSim.create(data, { seed, autoPedestrians });

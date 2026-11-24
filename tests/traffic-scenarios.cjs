@@ -209,7 +209,7 @@ function run(sim, scenario) {
       if (!activePhase && recoveryCohort.has(uid) && !next) clearedCohort.add(uid);
     }
     if (recoveryCohort.size && clearedCohort.size === recoveryCohort.size && recoveredAfter === null) recoveredAfter = elapsed - duration;
-    if (m.vehicles.length === 180) { result.capSeconds += .25; if (capAt === null) capAt = elapsed; }
+    if (m.vehicles.length === 200) { result.capSeconds += .25; if (capAt === null) capAt = elapsed; }
     laterMotion = motion;
     motion = map;
   }
@@ -229,7 +229,7 @@ function run(sim, scenario) {
     check(m.currentQueueAvgWait === null ? queueMean === null : queueMean !== null && Math.abs(queueMean - m.currentQueueAvgWait) <= .11, 'current stop mean', { time, reported: m.currentQueueAvgWait, calculated: queueMean });
     check(v.every(w => w.waiting || w.currentStopSeconds === 0), 'nonqueued vehicle retains a current stop', time);
     check(v.every(w => w.currentStopSeconds <= w.waitTime + .1), 'continuous wait exceeds full trip wait', time);
-    check(m.activeLimit === 180 && m.atActiveLimit === atCap && m.active <= m.activeLimit, 'active limit metadata', { time, active: m.active, limit: m.activeLimit, reported: m.atActiveLimit });
+    check(m.activeLimit === 200 && m.atActiveLimit === atCap && m.active <= m.activeLimit, 'active limit metadata', { time, active: m.active, limit: m.activeLimit, reported: m.atActiveLimit });
     if (atCap && !capRejectionChecked) {
       capRejectionChecked = true;
       const added = engine.addTraffic('S16', 1, 'car');
@@ -386,7 +386,9 @@ if (!isMainThread) {
     parentPort.postMessage(run(sim, scenario));
   }
 } else {
-  const rootDir = path.resolve(dir);
+  const projectDir = path.resolve(dir);
+  const jsDir = path.join(projectDir, 'js');
+  const rootDir = fs.existsSync(path.join(jsDir, 'simulation.js')) ? jsDir : projectDir;
   if (!['all', 'matrix', 'global', 'max'].includes(selection)) {
     throw new Error('Usage: node tests/traffic-scenarios.cjs [all|matrix|global|max] [project-dir] [workers]');
   }

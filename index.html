@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#f5f5f0">
   <meta name="description" content="A rules-based traffic signal simulator for exploring how streets respond to changing conditions.">
   <title>Signal Studio — Traffic simulation lab</title>
-  <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="map.css">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/map.css">
 </head>
 <body data-theme="light">
   <a class="skip-link" href="#main-content">Skip to simulation</a>
@@ -52,7 +52,7 @@
         <span id="activeLimitNotice" class="metric-limit" hidden>At capacity · entries pause</span>
       </div>
       <div class="metric-item">
-        <span class="metric-label">WAITING NOW</span>
+        <span class="metric-label">QUEUE NOW</span>
         <div class="metric-reading"><strong id="queuedCount">—</strong><span class="metric-unit">vehicles</span></div>
         <span id="queueWaitContext" class="metric-note" title="Mean duration of the current stop for vehicles waiting now"></span>
       </div>
@@ -90,62 +90,63 @@
             <div class="panel-icon road-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 3h8l3 18H5zM12 3v3m0 4v3m0 4v4"></path></svg></div>
             <h3 id="street-conditions-heading">Street Conditions</h3>
           </div>
-          <div class="road-picker-row">
-            <div class="field-grow">
-              <label for="roadSearch">Find a street</label>
-              <div class="input-with-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.2"></circle><path d="m15.4 15.4 4.1 4.1"></path></svg><input id="roadSearch" type="search" placeholder="Search by street name or ID" autocomplete="off"></div>
+          <div class="road-panel-scroll" tabindex="0" role="region" aria-label="Street controls and activity">
+            <div class="road-picker-row">
+              <div class="field-grow">
+                <label for="roadSearch">Find a street</label>
+                <div class="input-with-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.2"></circle><path d="m15.4 15.4 4.1 4.1"></path></svg><input id="roadSearch" type="search" placeholder="Search by street name or ID" autocomplete="off"></div>
+              </div>
+              <div class="field-grow">
+                <label for="roadSelect">Selected street</label>
+                <select id="roadSelect"><option value="">Choose from the map or list</option></select>
+              </div>
             </div>
-            <div class="field-grow">
-              <label for="roadSelect">Selected street</label>
-              <select id="roadSelect"><option value="">Choose from the map or list</option></select>
+            <div class="road-live-stats" aria-live="polite">
+              <span class="road-status-reading"><small>STATUS</small><b id="roadStatus">—</b><span id="roadBreakdownTiming" class="road-breakdown-timing" role="timer" hidden></span></span>
+              <span><small>VEHICLES</small><b id="roadCount">—</b></span>
+              <span><small>QUEUE</small><b id="roadQueue">—</b></span>
             </div>
-          </div>
-          <div class="road-live-stats" aria-live="polite">
-            <span class="road-status-reading"><small>STATUS</small><b id="roadStatus">—</b><span id="roadBreakdownTiming" class="road-breakdown-timing" role="timer" hidden></span></span>
-            <span><small>VEHICLES</small><b id="roadCount">—</b></span>
-            <span><small>QUEUE</small><b id="roadQueue">—</b></span>
-          </div>
-          <div class="toggle-grid" aria-label="Road restrictions and incidents">
-            <label class="switch-row" for="roadClosed"><span class="switch-copy"><strong>Manual closure</strong><small>Reroute traffic until you reopen the road</small></span><input id="roadClosed" type="checkbox"><span class="switch-track" aria-hidden="true"></span></label>
-            <label class="switch-row" for="roadBreakdown"><span class="switch-copy"><strong>Manual breakdown</strong><small>Add a stalled car until you clear it</small></span><input id="roadBreakdown" type="checkbox"><span class="switch-track" aria-hidden="true"></span></label>
-            <label class="switch-row" for="roadBikeOnly"><span class="switch-copy"><strong>Bike-only street</strong><small>Allow only motorbikes onto this road</small></span><input id="roadBikeOnly" type="checkbox"><span class="switch-track" aria-hidden="true"></span></label>
-          </div>
-          <div id="roadFeedback" class="feedback-line" role="status" aria-live="polite"></div>
+            <div class="toggle-grid" aria-label="Road restrictions and incidents">
+              <label class="switch-row" for="roadClosed"><span class="switch-copy"><strong>Manual closure</strong><small>Reroute traffic until you reopen the road</small></span><input id="roadClosed" type="checkbox"><span class="switch-track" aria-hidden="true"></span></label>
+              <label class="switch-row" for="roadBreakdown"><span class="switch-copy"><strong>Manual breakdown</strong><small>Add a stalled car until you clear it</small></span><input id="roadBreakdown" type="checkbox"><span class="switch-track" aria-hidden="true"></span></label>
+              <label class="switch-row" for="roadBikeOnly"><span class="switch-copy"><strong>Bike-only street</strong><small>Allow only motorbikes onto this road</small></span><input id="roadBikeOnly" type="checkbox"><span class="switch-track" aria-hidden="true"></span></label>
+            </div>
+            <div id="roadFeedback" class="feedback-line" role="status" aria-live="polite"></div>
 
-          <div id="roadworkSummary" class="roadwork-summary" hidden>
-            <div class="roadwork-heading">
-              <button id="roadworkStreet" class="text-button" type="button"></button>
-              <button id="roadworkTrack" class="text-button" type="button">Track crane</button>
+            <div class="panel-subsection">
+              <h4 class="activity-heading">Add Activity</h4>
+              <div class="add-controls">
+                <div class="field compact-field"><label for="trafficAmount">Amount</label><div class="number-input"><input id="trafficAmount" type="number" value="5" min="1" max="50" step="1"><span>vehicles</span></div></div>
+                <div class="field compact-field"><label for="vehicleType">Vehicle type</label><select id="vehicleType"><option value="car">Cars</option><option value="bike">Motorbikes</option><option value="bus">Buses</option><option value="crane">Cranes</option></select></div>
+                <button id="addTraffic" class="outline-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg><span id="addTrafficLabel">Add vehicles</span></button>
+                <p id="craneDispatchHelp" class="dispatch-help" hidden>Each crane starts here and picks a work street on its short route.</p>
+              </div>
+
+              <div class="crossing-activity">
+                <div class="crossing-controls">
+                  <div class="field">
+                    <label for="crossingSelect">Pedestrian crossing</label>
+                    <select id="crossingSelect" aria-describedby="crossingStatus"><option value="">Choose a crossing</option></select>
+                  </div>
+                  <div class="field">
+                    <label for="pedestrianAmount">People</label>
+                    <div class="number-input"><input id="pedestrianAmount" type="number" value="1" min="1" max="100" step="1" required></div>
+                  </div>
+                  <button id="requestPedestrians" class="outline-button" type="button" disabled>Request crossing</button>
+                </div>
+                <p id="crossingStatus" class="crossing-status">Select a crossing on the map or from the list.</p>
+                <output id="crossingFeedback" class="feedback-line" aria-live="polite"></output>
+              </div>
             </div>
-            <p id="roadworkTiming"></p>
+          </div>
+          <div id="roadworkSummary" class="roadwork-summary" data-state="idle">
+            <div class="roadwork-heading">
+              <button id="roadworkStreet" class="text-button" type="button" disabled>Crane roadwork</button>
+              <button id="roadworkTrack" class="text-button" type="button" disabled>Track crane</button>
+            </div>
+            <p id="roadworkTiming">No crane job active.</p>
             <progress id="roadworkProgress" max="1" value="0" aria-label="Roadwork progress" hidden></progress>
             <p id="roadworkOther" hidden></p>
-          </div>
-
-          <div class="panel-subsection">
-            <h4 class="activity-heading">Add Activity</h4>
-            <div class="add-controls">
-              <div class="field compact-field"><label for="trafficAmount">Amount</label><div class="number-input"><input id="trafficAmount" type="number" value="5" min="1" max="50" step="1"><span>vehicles</span></div></div>
-              <div class="field compact-field"><label for="vehicleType">Vehicle type</label><select id="vehicleType"><option value="car">Cars</option><option value="bike">Motorbikes</option><option value="crane">Cranes</option></select></div>
-              <button id="addTraffic" class="outline-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg><span id="addTrafficLabel">Add vehicles</span></button>
-              <p id="craneDispatchHelp" class="dispatch-help" hidden>Each crane starts here and picks a work street on its short route.</p>
-            </div>
-
-            <div class="crossing-activity">
-              <div class="crossing-controls">
-                <div class="field">
-                  <label for="crossingSelect">Pedestrian crossing</label>
-                  <select id="crossingSelect" aria-describedby="crossingStatus"><option value="">Choose a crossing</option></select>
-                </div>
-                <div class="field">
-                  <label for="pedestrianAmount">People</label>
-                  <div class="number-input"><input id="pedestrianAmount" type="number" value="1" min="1" max="100" step="1" required></div>
-                </div>
-                <button id="requestPedestrians" class="outline-button" type="button" disabled>Request crossing</button>
-              </div>
-              <p id="crossingStatus" class="crossing-status">Select a crossing on the map or from the list.</p>
-              <output id="crossingFeedback" class="feedback-line" aria-live="polite"></output>
-            </div>
           </div>
         </section>
         <div class="map-stage">
@@ -161,7 +162,7 @@
                 </form>
                 <div class="map-clock">
                   <span>Time of day</span>
-                  <time id="mapClock" datetime="07:00:00">07:00:00</time>
+                  <time id="mapClock" datetime="08:30:00">8:30:00 AM</time>
                 </div>
               </div>
               <div class="map-layers" aria-label="Map display options">
@@ -187,6 +188,8 @@
               <div class="map-summary-group">
                 <span class="map-key" aria-hidden="true"><i class="key-road"></i> Street</span>
                 <span class="map-key" aria-hidden="true"><i class="key-car"></i> Vehicle</span>
+                <span class="map-key" aria-hidden="true"><i class="key-bus"></i> Bus</span>
+                <span class="map-key" aria-hidden="true"><svg class="key-crane" viewBox="0 0 22 16"><path d="M2 12h15v2H2zM6 11 16 2h2L8 12M18 2v5q0 2-2 2"></path></svg> Crane</span>
                 <span class="map-key" aria-hidden="true"><i class="key-breakdown"></i> Breakdown</span>
                 <span class="map-key" aria-hidden="true"><i class="key-signal"><b></b></i> Signal</span>
               </div>
@@ -222,6 +225,7 @@
                   <option value="bike">Bike</option>
                   <option value="pedestrians">Pedestrians</option>
                   <option value="crane">Crane</option>
+                  <option value="bus">Bus</option>
                 </select>
                 <button id="trackLiveSelection" class="outline-button" type="button" aria-describedby="vehicleTrackingHint">Track</button>
               </div>
@@ -317,8 +321,10 @@
             <div class="range-scale demand-presets" role="group" aria-label="Traffic demand presets">
               <button type="button" class="demand-preset" data-demand-preset="0" aria-pressed="false">Quiet</button>
               <button type="button" class="demand-preset" data-demand-preset="1" aria-pressed="false">Typical</button>
+              <button type="button" class="demand-preset" data-demand-preset="2" aria-pressed="false">Busy</button>
               <button type="button" class="demand-preset" data-demand-preset="3" aria-pressed="false">Heavy</button>
             </div>
+            <p id="boundaryDemandSummary" class="weather-help demand-boundary-summary">Waiting to enter: 0.</p>
             <label class="switch-row demand-profile-toggle">
               <span class="switch-copy"><strong id="dailyDemandLabel">Daily demand</strong><small id="dailyDemandHelp">Adjust arrivals by simulated time of day</small></span>
               <input id="dailyDemand" type="checkbox" role="switch" aria-labelledby="dailyDemandLabel" aria-describedby="dailyDemandHelp" aria-controls="dailyDemandPanel">
@@ -326,13 +332,13 @@
             </label>
             <div id="dailyDemandPanel" class="demand-profile-panel" hidden>
               <dl class="demand-profile-readings">
-                <div><dt>Time of day</dt><dd><time id="demandClock" datetime="07:00:00">07:00:00</time></dd></div>
-                <div><dt title="Traffic demand multiplied by the daily profile">Effective demand</dt><dd id="effectiveDemand">0.95×</dd></div>
+                <div><dt>Time of day</dt><dd><time id="demandClock" datetime="08:30:00">8:30:00 AM</time></dd></div>
+                <div><dt title="Entry request rate relative to Typical steady demand">Effective demand</dt><dd id="effectiveDemand">1.0×</dd></div>
               </dl>
               <form id="demandTimeForm" class="demand-time-form">
                 <div class="field">
                   <label for="demandStartTime">Start time</label>
-                  <input id="demandStartTime" type="text" value="07:00" maxlength="5" pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]" required aria-describedby="demandTimeHelp">
+                  <input id="demandStartTime" type="text" value="08:30" maxlength="5" pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]" required aria-describedby="demandTimeHelp">
                 </div>
                 <button class="outline-button" type="submit">Set time</button>
               </form>
@@ -368,7 +374,7 @@
           <div class="chart-panel-heading"><div><p class="panel-overline">NETWORK OVER TIME</p><h3>Moving through the city</h3></div><div class="chart-legend"><span><i class="legend-active"></i> Active</span><span><i class="legend-queued"></i> Queued</span></div></div>
           <div class="chart-wrap"><svg id="historyChart" viewBox="0 0 800 180" role="img" aria-label="Chart showing traffic activity over simulation time" preserveAspectRatio="none"></svg><div id="chartEmpty" class="chart-empty">Run the simulation to start collecting network history.</div></div>
           <div class="chart-axis"><span>START</span><span>SIMULATION TIME</span><span>NOW</span></div>
-          <p class="weather-help">The JSON export includes the visible run snapshot and transition records. For a fair comparison, use the same seed, demand, road conditions, and simulated duration for each controller.</p>
+          <p class="weather-help">Export the live run, its controller transitions, and any strategy comparison results as JSON.</p>
         </div>
         <div class="insight-aside">
           <div class="throughput-card"><p class="panel-overline">COMPLETION RATE</p><div><strong id="throughput">—</strong><span>completed journeys</span></div><p>Journeys reaching their destination.</p></div>
@@ -379,21 +385,32 @@
           <ol id="eventList" class="event-list" aria-live="polite" aria-relevant="additions text"></ol>
         </div>
       </div>
+      <section class="comparison-panel" aria-labelledby="comparison-heading">
+        <div class="comparison-heading">
+          <div><p class="panel-overline">SIGNAL STRATEGY COMPARISON</p><h3 id="comparison-heading">Compare the same traffic conditions</h3></div>
+          <button id="compareStrategies" class="outline-button" type="button">Run comparison</button>
+        </div>
+        <p class="weather-help">Test the current settings and a second demand level over three random seeds. Fixed, adaptive, and queue-aware rules run alongside any connected model.</p>
+        <p class="weather-help">Each run starts with seeded traffic, your road settings, and matched vehicle requests. Incidents can differ as the traffic evolves.</p>
+        <p id="comparisonStatus" class="comparison-status" role="status" aria-live="polite">Ready to compare the three rules-based strategies.</p>
+        <div id="comparisonResults" class="comparison-results" hidden></div>
+      </section>
     </section>
   </main>
 
   <footer class="site-footer">
     <a class="footer-brand" href="#top"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span>Signal Studio</span></a>
     <p>Signal timing is a rules-based prototype for exploration and learning.</p>
-    <a class="footer-link" href="MODEL_INTEGRATION.md">Simulation hooks <span aria-hidden="true">↗</span></a>
+    <a class="footer-link" href="docs/MODEL_INTEGRATION.md">Simulation hooks <span aria-hidden="true">↗</span></a>
   </footer>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <script defer src="map-data.js"></script>
-  <script defer src="signal-layout.js"></script>
-  <script defer src="simulation.js"></script>
-  <script defer src="map.js"></script>
-  <script defer src="ml-control.js"></script>
-  <script defer src="app.js"></script>
+  <script defer src="js/map-data.js"></script>
+  <script defer src="js/signal-layout.js"></script>
+  <script defer src="js/simulation.js"></script>
+  <script defer src="js/map.js"></script>
+  <script defer src="js/ml-control.js"></script>
+  <script defer src="js/evaluation.js"></script>
+  <script defer src="js/app.js"></script>
 </body>
 </html>
