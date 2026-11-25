@@ -2273,7 +2273,7 @@
         closedRoadIds: [...detour.closedRoadIds]
       };
     }
-
+/* Ye function simulation ko aage nahi chalata aur file save nahi karta. Sirf current information deta hai.*/
     function getSnapshot() {
       const boundaryDemand = makeBoundaryDemandSnapshots();
       return {
@@ -2329,7 +2329,7 @@
         events: events.map((item) => ({ ...item }))
       };
     }
-
+/* getSnapshot() ki badi report se controller ke liye selected information nikalna.*/
     function getObservation(decision) {
       const snap = getSnapshot();
       const observation = {
@@ -2367,7 +2367,14 @@
       if (decision) observation.decision = { ...decision };
       return observation;
     }
+/*ska kaam: simulation ka time aage badhana aur us dauraan hone wali cheezein calculate karna.
+Matlab: 5 simulated seconds advance karo, phir updated traffic report lo. Iska matlab 5 real seconds wait karna nahi hai.
+ */
+/*getSnapshot() → simulation ki current detailed report deta hai.
 
+getObservation() → us current report se controller ke liye selected details nikalta hai. Abhi ye specific detection areas tak restricted nahi hai; woh change baaki hai.
+
+step(seconds) → prediction nahi deta. Simulation ko aage chalata hai. Uske baad nayi information getSnapshot() ya getObservation() se lete hain*/ 
     function step(dtSeconds, onTick) {
       if (!running) return stepRemainder;
       const dt = clamp(finiteNumber(dtSeconds, 0), 0, MAX_STEP);
