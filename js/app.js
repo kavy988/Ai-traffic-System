@@ -10,7 +10,6 @@
   const mlControl = window.TrafficMLControl.create(engine, { seed: 42 });
   // The queue-aware controller is a rules baseline; external models connect through this adapter.
   window.signalStudio = { engine, data, ml: mlControl, version: '2.3' };
-  window.signalStudio.simulator = window.TrafficSimulatorInterface.create(engine, data);
   const crossings = new Map((data.pedestrianCrossings || []).map(crossing => [crossing.id, crossing]));
   let selectedStreetId = 'S36';
   let selectedCrossingId = Array.from(crossings.values()).find(crossing => crossing.streetId === selectedStreetId)?.id ?? null;
@@ -1099,6 +1098,7 @@
     refreshUi(snapshot);
     renderMap(snapshot);
   };
+  
   window.signalStudio.registerMLModel = window.signalStudio.connectController;
   window.signalStudio.setControllerMode = (mode) => chooseController(mode);
 
