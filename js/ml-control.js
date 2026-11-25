@@ -1,3 +1,8 @@
+/*ml-control.js simulator aur signal controller ko connect karne wali helper file hai.
+- Ismein ek queue-based rule controller hai.
+- Baad mein trained model ka chosen action simulator tak pahunchayegi.
+- Decisions aur results record karti hai. */
+
 (function (root) {
   'use strict';
 

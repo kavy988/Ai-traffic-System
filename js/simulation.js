@@ -246,6 +246,7 @@
     let totalArrived = 0;
     let totalCompleted = 0;
     let totalCompletedWaitSeconds = 0;
+    let totalCompletedTravelSeconds = 0;
     let nextSpawnIn = 5;
     let nextBoundaryGate = 0;
     let boundaryTripPrefix = '';
@@ -261,6 +262,7 @@
     let mode = 'adaptive';
     let demand = 1;
     let customController = null;
+    const networkChoices = new Map();
     let currentSeed = finiteNumber(options && options.seed, 42) >>> 0;
     let generation = 0;
 
@@ -680,6 +682,7 @@
     }
 
     function phaseGreenDuration(group, phaseIndex, pedestrianDelay) {
+      if (mode === 'network') return networkGreenSeconds(group, pedestrianDelay ?? needsWalkBudget(group));
       const phase = group.phases[phaseIndex] || [];
       const desired = phase.reduce((longest, approach) => Math.max(longest, group.plannedDurations.get(approachKey(approach)) || 18), 0);
       return Math.min(desired || 18, maximumGreenDuration(group, pedestrianDelay ?? needsWalkBudget(group)));
@@ -704,7 +707,50 @@
       return Number.isFinite(value) ? clamp(value, 0, 1) : 0.8;
     }
 
-    function setNextGreen(group) {
+    function networkGreenBounds(group, pedestrianDelay = needsWalkBudget(group)) {
+      const maximum = maximumGreenDuration(group, pedestrianDelay);
+      const minimum = Math.min(10, maximum);
+      return [minimum, (minimum + maximum) / 2, maximum];
+    }
+
+    function networkGreenSeconds(group, pedestrianDelay) {
+      return networkGreenBounds(group, pedestrianDelay)[networkChoices.get(group.nodeId) ?? 1];
+    }
+
+    function setNetworkActions(actions) {
+      if (mode !== 'network') return { ok: false, message: 'Select network mode before supplying actions.' };
+      const nodeIds = [...signalGroups.keys()].sort((a, b) => a.localeCompare(b));
+      if (!Array.isArray(actions) || actions.length !== nodeIds.length ||
+          ![...actions].every(choice => Number.isInteger(choice) && choice >= 0 && choice <= 2)) {
+        return { ok: false, message: `Supply ${nodeIds.length} choices in nodeIds order: 0=short, 1=medium, 2=long.` };
+      }
+      nodeIds.forEach((id, index) => networkChoices.set(id, actions[index]));
+      return { ok: true, effectiveAt: 'next_green', nodeIds, choices: actions.slice() };
+    }
+
+    function getSignalControlState() {
+      return [...signalGroups.values()].sort((a, b) => a.nodeId.localeCompare(b.nodeId)).map(group => ({
+        nodeId: group.nodeId,
+        stage: group.stage,
+        phaseIndex: group.phaseIndex,
+        remainingSeconds: Math.max(0, group.remaining),
+        greenDurationSeconds: group.greenSeconds,
+        phaseElapsedSeconds: Math.max(0, (group.stage === 'green' ? group.greenSeconds
+          : group.stage === 'yellow' ? yellowSeconds : group.stage === 'walk' ? PEDESTRIAN_WALK_SECONDS
+          : SIGNAL_ALL_RED_SECONDS) - group.remaining),
+        phases: group.phases.map(phase => phase.map(approach => ({ ...approach }))),
+        approaches: group.approaches.map(approach => ({ ...approach,
+          stopProgress: vehicleStopProgress(group.nodeId, approach.streetId, approach.reverse) })),
+        redElapsedSeconds: group.phaseRedAt.map((at, index) =>
+          index === group.phaseIndex && (group.stage === 'green' || group.stage === 'yellow') ? 0 : Math.max(0, time - at)),
+        greensUntilWalk: group.greensUntilWalk,
+        pendingChoice: networkChoices.get(group.nodeId) ?? 1,
+        nextGreenSeconds: networkGreenBounds(group),
+        lastAppliedAction: group.lastNetworkAction ? { ...group.lastNetworkAction } : null
+      }));
+    }
+
+    function setNextGreen(group, startsAt = time) {
       if (!group.phases.length) return;
       const served = group.phases[group.phaseIndex] || [];
       group.greensUntilWalk = Math.max(0, group.greensUntilWalk - 1);
@@ -714,6 +760,10 @@
       group.stage = 'green';
       group.greenSeconds = phaseGreenDuration(group, group.phaseIndex);
       group.remaining = group.greenSeconds;
+      if (mode === 'network') group.lastNetworkAction = {
+        choice: networkChoices.get(group.nodeId) ?? 1, phaseIndex: group.phaseIndex,
+        startedAt: startsAt, scheduledSeconds: group.greenSeconds
+      };
       served.forEach((approach) => group.plannedDurations.set(approachKey(approach), chooseGreenDuration(group, approach)));
     }
 
@@ -798,7 +848,7 @@
               // Let every vehicle phase run before inserting another WALK.
               group.greensUntilWalk = group.phases.length;
             } else {
-              setNextGreen(group);
+              setNextGreen(group, transitionAt);
             }
           } else if (group.stage === 'walk') {
             const served = countPedestrians(group.walkingPedestrians);
@@ -1345,6 +1395,7 @@
       if (recentWaitSamples.length > AVG_WAIT_TRIP_COUNT) recentWaitSamples.shift();
       totalCompleted += 1;
       totalCompletedWaitSeconds += vehicle.runWaitTime;
+      totalCompletedTravelSeconds += entry.duration;
       departureTimes.push(time);
       if (departureTimes.length > 500) departureTimes.shift();
       while (departureTimes.length && departureTimes[0] < time - 60) departureTimes.shift();
@@ -2103,7 +2154,10 @@
         const group = signalGroups.get(nodeId);
         const waiting = countPedestrians(group.waitingPedestrians.filter((item) => item.crossingId === id));
         const crossing = countPedestrians(group.walkingPedestrians.filter((item) => item.crossingId === id));
-        return { id, nodeId, streetId, reverse, waiting, crossing, completedPedestrians: completedPedestrians.get(id) || 0,
+        const requests = group.waitingPedestrians.filter(item => item.crossingId === id);
+        const oldestWaitSeconds = requests.length ? Math.max(...requests.map(item => Math.max(0, time - item.waitingSince))) : 0;
+        return { id, nodeId, streetId, reverse, waiting, crossing, oldestWaitSeconds,
+          completedPedestrians: completedPedestrians.get(id) || 0,
           state: crossing ? 'walk' : 'wait', remaining: crossing ? group.remaining : 0,
           duration: crossing ? PEDESTRIAN_WALK_SECONDS : 0 };
       });
@@ -2188,6 +2242,9 @@
         unfinishedWaitPerActiveVehicleSeconds: activeCount ? rounded(unfinishedWait / activeCount) : null,
         unfinishedTripWaitSeconds: rounded(unfinishedTripWaitSeconds()),
         completedWaitSeconds: rounded(totalCompletedWaitSeconds),
+        completedTravelSeconds: rounded(totalCompletedTravelSeconds),
+        avgCompletedTravelSeconds: totalCompleted ? rounded(totalCompletedTravelSeconds / totalCompleted) : null,
+        unfinishedTravelSeconds: rounded(vehicleList.reduce((sum, vehicle) => sum + Math.max(0, time - vehicle.startedAt), 0)),
         totalAccruedWaitSeconds: rounded(totalCompletedWaitSeconds + unfinishedWait),
         throughput: throughput(),
         totalArrived,
@@ -2471,7 +2528,7 @@ step(seconds) → prediction nahi deta. Simulation ko aage chalata hai. Uske baa
     }
 
     function setMode(value) {
-      if (!['adaptive', 'fixed', 'custom'].includes(value)) return { ok: false, message: 'Unknown controller mode.' };
+      if (!['adaptive', 'fixed', 'custom', 'network'].includes(value)) return { ok: false, message: 'Unknown controller mode.' };
       if (value === 'custom' && !customController) return { ok: false, message: 'Register a controller before selecting custom mode.' };
       mode = value;
       replanUnservedGreens();
@@ -2802,7 +2859,7 @@ step(seconds) → prediction nahi deta. Simulation ko aage chalata hai. Uske baa
       const accepted = Math.min(amount, 200 - occupied);
       if (accepted < 1) return { ok: false, message: 'The crossing queue is full.' };
       if (existing) existing.count += accepted;
-      else group.waitingPedestrians.push({ streetId, crossingId, count: accepted });
+      else group.waitingPedestrians.push({ streetId, crossingId, count: accepted, waitingSince: time });
       if (group.stage === 'green') {
         const elapsed = group.greenSeconds - group.remaining;
         group.greenSeconds = Math.min(group.greenSeconds, maximumGreenDuration(group, true));
@@ -2941,6 +2998,8 @@ step(seconds) → prediction nahi deta. Simulation ko aage chalata hai. Uske baa
       totalArrived = 0;
       totalCompleted = 0;
       totalCompletedWaitSeconds = 0;
+      totalCompletedTravelSeconds = 0;
+      networkChoices.clear();
       stepRemainder = 0;
       nextSpawnIn = 5 + random() * 3;
       historyElapsed = 0;
@@ -2974,7 +3033,10 @@ step(seconds) → prediction nahi deta. Simulation ko aage chalata hai. Uske baa
       for (let index = 0; index < warmupSteps; index += 1) step(MAX_STEP);
 
       const visibleStartOffset = time;
-      signalGroups.forEach((group) => { group.phaseRedAt = group.phaseRedAt.map((at) => at - visibleStartOffset); });
+      signalGroups.forEach((group) => {
+        group.phaseRedAt = group.phaseRedAt.map((at) => at - visibleStartOffset);
+        group.waitingPedestrians.forEach(item => { item.waitingSince -= visibleStartOffset; });
+      });
       vehicleList.forEach((vehicle) => {
         // Keep warmed-up vehicles and their accumulated delay continuous across
         // the visible clock reset, so the live rolling average does not mix a
@@ -3004,6 +3066,7 @@ step(seconds) → prediction nahi deta. Simulation ko aage chalata hai. Uske baa
       completedPedestrians.clear();
       totalCompleted = 0;
       totalCompletedWaitSeconds = 0;
+      totalCompletedTravelSeconds = 0;
       totalArrived = vehicleList.length;
       departureTimes = [];
       events = [];
@@ -3018,6 +3081,11 @@ step(seconds) → prediction nahi deta. Simulation ko aage chalata hai. Uske baa
       addEvent('Simulation ready with seeded city traffic.', 'success');
     }
 
+  /*  Iska kaam: fresh simulation run start karna.
+- seed === undefined ? 42 : seed → seed nahi diya toh 42; diya hai toh woh use karo.
+- initialize(...) → vehicles, signals, timers aur run counters ko starting conditions par initialise karta hai.
+- return getSnapshot() → naye run ki current report deta hai.
+*/
     function reset(seed) {
       initialize(seed === undefined ? 42 : seed);
       return getSnapshot();
@@ -3052,6 +3120,8 @@ step(seconds) → prediction nahi deta. Simulation ko aage chalata hai. Uske baa
       requestCrossing,
       setController,
       getObservation,
+      getSignalControlState,
+      setNetworkActions,
       exportRun
     };
   }
