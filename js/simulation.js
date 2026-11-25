@@ -39,7 +39,7 @@
   const SIGNAL_YELLOW_SECONDS = 6.5;
   const SIGNAL_ALL_RED_SECONDS = 1;
   const PEDESTRIAN_WALK_SECONDS = 7;
-  const MAX_SIGNAL_RED_SECONDS = 30;
+  const DEFAULT_MAX_SIGNAL_RED_SECONDS = 30;
   const RED_CAP_MARGIN_SECONDS = 0.1;
   const BREAKDOWN_STARTUP_HOLD = 3;
   const BREAKDOWN_PASS_HEADWAY = 1.25;
@@ -107,6 +107,12 @@
 
     const nodes = new Map(data.nodes.map((node) => [node.id, node]));
     const realisticTraffic = options?.realisticTraffic === true;
+    // A run-level service limit, not an action the signal controller can override.
+    // Keep existing runs at 30 seconds; experiments may explicitly relax it.
+    const maxRedSeconds = options?.maxRedSeconds ?? DEFAULT_MAX_SIGNAL_RED_SECONDS;
+    if (!Number.isFinite(maxRedSeconds) || maxRedSeconds < DEFAULT_MAX_SIGNAL_RED_SECONDS) {
+      throw new RangeError('maxRedSeconds must be a finite number of at least 30 seconds.');
+    }
     const yellowSeconds = realisticTraffic ? 3 : SIGNAL_YELLOW_SECONDS;
     const warmupSeconds = realisticTraffic ? BOUNDARY_WARMUP_SECONDS : STARTUP_WARMUP_SECONDS;
     const bikeProfile = realisticTraffic
@@ -651,7 +657,7 @@
         if (!assigned.has(key)) phases.push([approach]);
       });
       if (phases.length > 3) {
-        throw new Error('Signal node ' + nodeId + ' has too many non-compatible phases to guarantee the 30-second red limit.');
+        throw new Error('Signal node ' + nodeId + ' has too many non-compatible phases; at most three are supported.');
       }
       return phases;
     }
@@ -670,7 +676,7 @@
       if (!transitions) return 30;
       const pedestrianClearance = pedestrianDelay ? PEDESTRIAN_WALK_SECONDS + SIGNAL_ALL_RED_SECONDS : 0;
       const fixedWait = SIGNAL_ALL_RED_SECONDS + transitions * (yellowSeconds + SIGNAL_ALL_RED_SECONDS) + pedestrianClearance;
-      return Math.max(0, (MAX_SIGNAL_RED_SECONDS - fixedWait - RED_CAP_MARGIN_SECONDS) / transitions);
+      return Math.max(0, (maxRedSeconds - fixedWait - RED_CAP_MARGIN_SECONDS) / transitions);
     }
 
     function phaseGreenDuration(group, phaseIndex, pedestrianDelay) {
@@ -2278,6 +2284,7 @@
         speed,
         weather,
         mode,
+        maxRedSeconds,
         demandProfileMode,
         demandProfileStartTime: formatTimeOfDay(demandProfileStartSeconds),
         demand: rounded(demand),
@@ -2806,7 +2813,7 @@
       for (let ahead = 1; ahead <= group.phases.length; ahead += 1) {
         const index = (activeIndex + ahead) % group.phases.length;
         const redElapsed = walkStartsAt - phaseRedAt[index];
-        if (redElapsed + seconds > MAX_SIGNAL_RED_SECONDS + EPSILON) return false;
+        if (redElapsed + seconds > maxRedSeconds + EPSILON) return false;
         seconds += phaseInterval;
       }
       return true;
