@@ -2,3 +2,4 @@
 node_modules/
 *.log
 /data/s2/
+/rl/.venv/

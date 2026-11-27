@@ -1,4 +1,9 @@
 # cd - change directory , allowing the terminal to work same in any folder/files.
-cd "/Users/kavyaagarwal/Documents/ChatGPT/jatyau/traffic system/rl"
-python3 --version
-node --version
+gymnasium
+stable-baselines3
+torch
+numpy
+pandas
+matplotlib
+tensorboard
+pytest
